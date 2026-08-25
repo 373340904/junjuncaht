@@ -342,7 +342,9 @@ async def me(user: User = Depends(get_current_user)):
 async def search_users(q: str, user: User = Depends(get_current_user)):
     async with async_session() as session:
         result = await session.execute(
-            select(User).where(User.username.contains(q.lower())).limit(20)
+            select(User).where(
+                (User.username.contains(q.lower())) | (User.nickname.contains(q))
+            ).limit(20)
         )
         users = result.scalars().all()
         return [user_to_dict(u) for u in users if u.id != user.id]
