@@ -28,6 +28,11 @@ SECRET_KEY = os.environ.get("JWT_SECRET_KEY", secrets.token_urlsafe(64))
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "10080"))
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./junjunchat.db")
+# Railway PostgreSQL 自动提供 postgresql://，需要转成异步驱动格式
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+elif DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "225878")
 OFFICIAL_GROUP_TITLE = "JunjunChat 官方群"
 
