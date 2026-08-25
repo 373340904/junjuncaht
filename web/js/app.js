@@ -38,6 +38,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   bindChat();
   bindModal();
   bindContextMenu();
+  bindExtra();
   // 检查自动登录
   const saved=localStorage.getItem('jj_auto_login');
   if(saved==='1'){
@@ -281,7 +282,7 @@ function renderGroupSidebar(){
     </div>
     ${g.announcement?`<div class="kc-gs-section"><div style="font-size:12px;color:var(--kc-muted);margin-bottom:6px">群公告</div><div class="kc-gs-announcement">${esc(g.announcement)}</div></div>`:''}
     <div class="kc-gs-section"><div style="font-size:12px;color:var(--kc-muted);margin-bottom:8px">群成员 (${S.groupMembers.length})</div>
-      ${S.groupMembers.map(m=>{const u=m.user||{};const name=u.nickname||u.username||'用户';return `<div class="kc-gs-member" onclick="showUserCard(${u.id})">
+      ${S.groupMembers.map(m=>{const u=m;const name=u.nickname||u.username||'用户';return `<div class="kc-gs-member" onclick="showUserCard(${u.id})">
         ${avatarHTML(name,32)}<div class="kc-gs-member-name">${esc(name)}</div>
         ${m.role==='owner'?'<span class="kc-gs-role owner">群主</span>':m.role==='admin'?'<span class="kc-gs-role admin">管理员</span>':''}
       </div>`;}).join('')}
@@ -292,7 +293,7 @@ function renderGroupSidebar(){
       <button class="kc-gs-btn" onclick="leaveGroup()">退出群聊</button>
     </div>`;
 }
-function getMyRole(){if(!S.groupMembers||!S.user)return'member';const m=S.groupMembers.find(x=>String(x.user_id)===String(S.user.id));return m?m.role:'member';}
+function getMyRole(){if(!S.groupMembers||!S.user)return'member';const m=S.groupMembers.find(x=>String(x.id)===String(S.user.id));return m?m.role:'member';}
 function showGroupMenu(e){
   if(!S.groupInfo){loadGroupInfo(S.activeConv.id).then(()=>showGroupMenu(e));return;}
   const role=getMyRole();
@@ -323,10 +324,9 @@ async function leaveGroup(){
 // ========== 用户名片 ==========
 async function showUserCard(uid){
   try{
-    const users=await apiGet('/users/search?q='+uid);
-    const u=users.find(x=>String(x.id)===String(uid));
+    const u=await apiGet('/users/'+uid+'/profile');
     if(!u){alert('用户不存在');return;}
-    const isFriend=S.friends.some(f=>String(f.id)===String(uid));
+    const isFriend=u.is_friend||S.friends.some(f=>String(f.id)===String(uid));
     $('user-card-content').innerHTML=`
       <div class="uc-avatar" style="background:linear-gradient(135deg,${avatarColor(u.username)},${avatarColor(u.username+'x')})">${esc(avatarText(u.nickname||u.username))}</div>
       <div class="uc-name">${esc(u.nickname||u.username)}</div>
@@ -414,7 +414,10 @@ function renderPosts(){
   if(!S.posts.length){box.innerHTML='<div class="empty-state"><div class="empty-icon">📝</div><p>还没有动态，点右上角✏️发布第一条</p></div>';return;}
   box.innerHTML=S.posts.map(p=>`<div class="moment-card"><div class="moment-header">${avatarHTML(p.author||'用户',36)}<div><div style="font-weight:600;font-size:14px">${esc(p.author||'用户')}</div><div style="font-size:11px;color:var(--kc-muted)">${fmtTime(p.time)}</div></div></div><div class="moment-content">${esc(p.content)}</div></div>`).join('');
 }
-$('btn-post-moment').onclick=()=>{const c=prompt('发布动态');if(c){S.posts.unshift({author:S.user.nickname||S.user.username,content:c,time:new Date().toISOString()});renderPosts();}};
+function bindExtra(){
+  const pm=$('btn-post-moment');if(pm)pm.onclick=()=>{const c=prompt('发布动态');if(c){S.posts.unshift({author:S.user.nickname||S.user.username,content:c,time:new Date().toISOString()});renderPosts();}};
+  const at=$('btn-add-task');if(at)at.onclick=()=>{const t=prompt('添加任务');if(t){S.tasks.push({text:t,done:false});renderTasks();}};
+}
 function renderHome(){$('home-content').innerHTML=`<div style="max-width:600px;margin:0 auto"><div class="card" style="margin-bottom:16px"><div class="card-header">${avatarHTML(S.user.nickname||S.user.username,48)}<div><div class="card-title">${esc(S.user.nickname||S.user.username)}</div><div style="font-size:12px;color:var(--kc-muted)">@${esc(S.user.username)} · ID: ${S.user.id}</div></div></div><div class="card-desc">${esc(S.user.signature||'这个人很懒，什么都没写')}</div></div><div class="bot-stats" style="grid-template-columns:repeat(3,1fr)"><div class="bot-stat-card"><div class="bot-stat-num">${S.convs.length}</div><div class="bot-stat-label">会话</div></div><div class="bot-stat-card"><div class="bot-stat-num">${S.friends.length}</div><div class="bot-stat-label">好友</div></div><div class="bot-stat-card"><div class="bot-stat-num">${S.bots.length}</div><div class="bot-stat-label">机器人</div></div></div></div>`;}
 function renderTeamup(){$('teamup-content').innerHTML='<div class="empty-state"><div class="empty-icon">🎮</div><p>组队中心开发中...</p></div>';}
 function renderTasks(){
@@ -422,7 +425,6 @@ function renderTasks(){
   if(!S.tasks.length){box.innerHTML='<div class="empty-state"><div class="empty-icon">✅</div><p>还没有任务，点右上角+添加</p></div>';return;}
   box.innerHTML=S.tasks.map((t,i)=>`<div class="task-item"><div class="task-check ${t.done?'done':''}" onclick="toggleTask(${i})">${t.done?'✓':''}</div><div class="task-text ${t.done?'done':''}">${esc(t.text)}</div><button class="kc-icon-btn" onclick="delTask(${i})">×</button></div>`).join('');
 }
-$('btn-add-task').onclick=()=>{const t=prompt('添加任务');if(t){S.tasks.push({text:t,done:false});renderTasks();}};
 function toggleTask(i){S.tasks[i].done=!S.tasks[i].done;renderTasks();}
 function delTask(i){S.tasks.splice(i,1);renderTasks();}
 function renderFavorites(){$('favorites-content').innerHTML='<div class="empty-state"><div class="empty-icon">⭐</div><p>收藏功能开发中...</p></div>';}
@@ -448,7 +450,12 @@ function renderSettings(){
 }
 async function saveProfile(){
   const nick=$('set-nick').value.trim(),sign=$('set-sign').value.trim(),status=$('set-status').value;
-  try{await apiPut('/auth/profile',{nickname:nick,signature:sign,status});S.user.nickname=nick;S.user.signature=sign;S.user.status=status;alert('保存成功');}catch(e){alert(e.message);}
+  try{
+    await apiPut('/auth/profile',{nickname:nick,signature:sign});
+    await apiPut('/auth/status',{status});
+    S.user.nickname=nick;S.user.signature=sign;S.user.status=status;
+    alert('保存成功');
+  }catch(e){alert(e.message);}
 }
 function enterAdmin(){if($('admin-pass').value===ADMIN_PASS){alert('管理员模式已开启');}else alert('密码错误');}
 function showProfile(){switchNav('settings');}
