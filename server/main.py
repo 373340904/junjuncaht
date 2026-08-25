@@ -955,7 +955,36 @@ async def create_bot(req: CreateBotReq, user: User = Depends(get_current_user)):
         session.add(bot)
         await session.commit()
         await session.refresh(bot)
+        # 自动加入官方群
+        result = await session.execute(select(Conversation).where(Conversation.is_official == True))
+        official = result.scalar_one_or_none()
+        if official:
+            bot_user_id = bot.id + 1000000
+            session.add(ConversationMember(conversation_id=official.id, user_id=bot_user_id, role="member"))
+            await session.commit()
         return bot_to_dict(bot)
+
+@app.post("/api/v1/bots/{bot_id}/join/{conversation_id}")
+async def bot_join_group(bot_id: int, conversation_id: int, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        result = await session.execute(select(Bot).where((Bot.id == bot_id) & (Bot.owner_id == user.id)))
+        bot = result.scalar_one_or_none()
+        if not bot:
+            raise HTTPException(404, "机器人不存在")
+        result = await session.execute(select(Conversation).where(Conversation.id == conversation_id))
+        conv = result.scalar_one_or_none()
+        if not conv or conv.type != "group":
+            raise HTTPException(404, "群聊不存在")
+        bot_user_id = bot.id + 1000000
+        result = await session.execute(select(ConversationMember).where(
+            (ConversationMember.conversation_id == conversation_id) &
+            (ConversationMember.user_id == bot_user_id)
+        ))
+        if result.scalar_one_or_none():
+            return {"status": "already_joined"}
+        session.add(ConversationMember(conversation_id=conversation_id, user_id=bot_user_id, role="member"))
+        await session.commit()
+        return {"status": "joined"}
 
 @app.post("/api/v1/bots/{bot_id}/rotate-key")
 async def rotate_bot_key(bot_id: int, user: User = Depends(get_current_user)):

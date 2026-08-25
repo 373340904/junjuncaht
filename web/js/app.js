@@ -172,7 +172,9 @@ function renderMsgs(){
     const me=S.user&&String(m.sender_id)===String(S.user.id);
     const s=m.sender||{},name=s.nickname||s.username||'用户';
     const el=document.createElement('div');el.className='message'+(me?' me':' other');
-    el.innerHTML='<div class="message-avatar" style="background:linear-gradient(135deg,'+avC(name)+','+avC(name+'x')+')">'+esc(avT(name))+'</div><div class="message-body">'+(!me?'<div class="message-sender">'+esc(name)+'</div>':'')+'<div class="message-bubble">'+esc(m.content)+'</div><div class="message-time">'+fmt(m.created_at)+'</div></div>';
+    let content=esc(m.content);
+    try{if(window.marked)content=marked.parse(m.content);}catch(e){}
+    el.innerHTML='<div class="message-avatar" style="background:linear-gradient(135deg,'+avC(name)+','+avC(name+'x')+')">'+esc(avT(name))+'</div><div class="message-body">'+(!me?'<div class="message-sender">'+esc(name)+'</div>':'')+'<div class="message-bubble markdown-body">'+content+'</div><div class="message-time">'+fmt(m.created_at)+'</div></div>';
     box.appendChild(el);
   });
   box.scrollTop=box.scrollHeight;
@@ -220,7 +222,17 @@ function renderBots(){
   box.appendChild(grid);
 }
 function showBotDetail(b){
-  showModal('机器人: '+b.name,'<div style="margin-bottom:14px"><div style="font-size:12px;color:var(--text-2);margin-bottom:6px">Bot Key（点击复制）</div><div class="bot-key-box" onclick="navigator.clipboard.writeText(this.textContent)">'+esc(b.bot_key)+'</div></div><div style="margin-bottom:14px"><div style="font-size:12px;color:var(--text-2);margin-bottom:6px">WebSocket</div><div class="code-block">wss://junjuncaht-production.up.railway.app/bot/ws?key='+esc(b.bot_key)+'</div></div><div><div style="font-size:12px;color:var(--text-2);margin-bottom:6px">Python 示例</div><div class="code-block">import websocket, json, requests\nKEY="'+esc(b.bot_key)+'"\ndef on_msg(ws,msg):\n  d=json.loads(msg)\n  if d["type"]=="message.created":\n    m=d["data"]\n    requests.post(f"https://junjuncaht-production.up.railway.app/bot-api/conversations/{m[\'conversation_id\']}/messages",headers={"Authorization":f"Bot {KEY}"},json={"message":"收到！"})\nws=websocket.WebSocketApp(f"wss://junjuncaht-production.up.railway.app/bot/ws?key={KEY}",on_message=on_msg)\nws.run_forever()</div></div>',null);
+  const myGroups=(S.convs||[]).filter(c=>c.type==='group');
+  showModal('机器人: '+b.name,
+    '<div style="margin-bottom:14px"><div style="font-size:12px;color:var(--text-2);margin-bottom:6px">Bot Key（点击复制）</div><div class="bot-key-box" onclick="navigator.clipboard.writeText(this.textContent)">'+esc(b.bot_key)+'</div></div>'+
+    '<div style="margin-bottom:14px"><div style="font-size:12px;color:var(--text-2);margin-bottom:6px">WebSocket</div><div class="code-block">wss://junjuncaht-production.up.railway.app/bot/ws?key='+esc(b.bot_key)+'</div></div>'+
+    '<div style="margin-bottom:14px"><div style="font-size:12px;color:var(--text-2);margin-bottom:6px">加入群聊</div>'+
+    (myGroups.length?myGroups.map(g=>'<div class="setting-item"><span>'+esc(g.title)+'</span><button class="glass-btn primary" style="padding:5px 12px;font-size:11px" onclick="joinBotToGroup('+b.id+','+g.id+')">加入</button></div>').join(''):'<div style="font-size:12px;color:var(--text-2)">你还没有管理的群聊</div>')+
+    '</div>'+
+    '<div><div style="font-size:12px;color:var(--text-2);margin-bottom:6px">Python 示例</div><div class="code-block">import websocket, json, requests\nKEY="'+esc(b.bot_key)+'"\ndef on_msg(ws,msg):\n  d=json.loads(msg)\n  if d["type"]=="message.created":\n    m=d["data"]\n    requests.post(f"https://junjuncaht-production.up.railway.app/bot-api/conversations/{m[\'conversation_id\']}/messages",headers={"Authorization":f"Bot {KEY}"},json={"message":"收到！"})\nws=websocket.WebSocketApp(f"wss://junjuncaht-production.up.railway.app/bot/ws?key={KEY}",on_message=on_msg)\nws.run_forever()</div></div>',null);
+}
+async function joinBotToGroup(bid,gid){
+  try{await api('POST','/bots/'+bid+'/join/'+gid);alert('机器人已加入群聊！');closeModal();}catch(e){alert('加入失败: '+e.message);}
 }
 
 /* ===== 动态 ===== */
