@@ -54,90 +54,100 @@
     <div class="nav-item" data-nav="settings" title="设置"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
   </div>
 
-  <!-- 二级侧边栏（联系人/动态等用） -->
-  <div class="sub-sidebar" id="sub-sidebar" style="display:none">
-    <div class="sub-sidebar-header" id="sub-sidebar-title">联系人</div>
-    <div class="sub-sidebar-list" id="sub-sidebar-list"></div>
-  </div>
-
-  <!-- 列表面板 -->
-  <div class="list-panel" id="panel-chat">
-    <div class="panel-header"><span class="panel-title">消息</span><div class="panel-actions"><button class="icon-btn" id="btn-add-chat" title="发起聊天">+</button></div></div>
-    <div class="tab-bar"><div class="tab active" data-list="conversations">消息</div><div class="tab" data-list="friends">好友</div><div class="tab" data-list="groups">群聊</div></div>
-    <div class="search-box"><input id="search-input" type="text" placeholder="搜索..."></div>
-    <div class="list-container" id="chat-list"></div>
-  </div>
-
-  <div class="list-panel" id="panel-contacts" style="display:none">
-    <div class="panel-header"><span class="panel-title">联系人</span><div class="panel-actions"><button class="icon-btn" id="btn-add-friend" title="添加好友">+</button></div></div>
-    <div class="contact-cats">
-      <div class="contact-cat active" data-cat="friends"><div class="cat-icon">👥</div><div><div class="cat-name">我的好友</div><div class="cat-count" id="friend-count">0 位联系人</div></div></div>
-      <div class="contact-cat" data-cat="requests"><div class="cat-icon">🔔</div><div><div class="cat-name">通知中心</div><div class="cat-count" id="request-count">0 条待处理</div></div></div>
-      <div class="contact-cat" data-cat="groups"><div class="cat-icon">👨‍👩‍👧‍👦</div><div><div class="cat-name">我的群聊</div><div class="cat-count" id="group-count">0 个群聊</div></div></div>
-    </div>
-    <div class="list-container" id="contacts-list"></div>
-  </div>
-
-  <div class="list-panel" id="panel-space" style="display:none">
-    <div class="panel-header"><span class="panel-title">好友动态</span><div class="panel-actions"><button class="icon-btn" id="btn-post-moment" title="发动态">✏️</button></div></div>
-    <div class="space-container" id="space-container"></div>
-  </div>
-
-  <div class="list-panel" id="panel-bots" style="display:none">
-    <div class="panel-header"><span class="panel-title">机器人广场</span><div class="panel-actions"><button class="icon-btn" id="btn-create-bot" title="创建机器人">+</button></div></div>
-    <div class="bot-stats">
-      <div class="bot-stat-card"><div class="stat-num" id="stat-total">0</div><div class="stat-label">广场机器人</div></div>
-      <div class="bot-stat-card"><div class="stat-num" id="stat-online">0</div><div class="stat-label">实时在线</div></div>
-      <div class="bot-stat-card"><div class="stat-num" id="stat-mine">0</div><div class="stat-label">我的机器人</div></div>
-    </div>
-    <div class="bot-tabs"><div class="bot-tab active" data-bottab="square">广场</div><div class="bot-tab" data-bottab="mine">我的机器人</div></div>
-    <div class="bot-grid" id="bot-grid"></div>
-  </div>
-
-  <div class="list-panel" id="panel-tasks" style="display:none">
-    <div class="panel-header"><span class="panel-title">任务待办</span><div class="panel-actions"><button class="icon-btn" id="btn-add-task" title="添加任务">+</button></div></div>
-    <div class="task-container" id="task-container"></div>
-  </div>
-
-  <div class="list-panel" id="panel-files" style="display:none">
-    <div class="panel-header"><span class="panel-title">文件</span></div>
-    <div class="empty-state"><div class="empty-icon">📁</div><p>文件功能开发中</p></div>
-  </div>
-
-  <div class="list-panel" id="panel-favorites" style="display:none">
-    <div class="panel-header"><span class="panel-title">收藏</span></div>
-    <div class="empty-state"><div class="empty-icon">⭐</div><p>收藏功能开发中</p></div>
-  </div>
-
-  <div class="list-panel" id="panel-settings" style="display:none">
-    <div class="panel-header"><span class="panel-title">设置</span></div>
-    <div class="settings-container">
-      <div class="setting-section"><h3>个人资料</h3>
-        <div class="setting-item"><span>昵称</span><input id="set-nick" class="glass-input" placeholder="昵称"></div>
-        <div class="setting-item"><span>个性签名</span><input id="set-sign" class="glass-input" placeholder="个性签名"></div>
-        <div class="setting-item"><span>当前状态</span><select id="status-select" class="glass-input"><option value="online">在线</option><option value="away">离开</option><option value="busy">忙碌</option><option value="offline">隐身</option></select></div>
-        <button class="glass-btn primary" id="btn-save-profile">保存资料</button>
+  <!-- 主内容区 -->
+  <div class="main-content">
+    <!-- 聊天页面：列表+聊天 -->
+    <div class="chat-layout" id="layout-chat">
+      <div class="list-panel">
+        <div class="panel-header"><span class="panel-title">消息</span><div class="panel-actions"><button class="icon-btn" id="btn-add-chat" title="发起聊天">+</button></div></div>
+        <div class="tab-bar"><div class="tab active" data-list="conversations">消息</div><div class="tab" data-list="friends">好友</div><div class="tab" data-list="groups">群聊</div></div>
+        <div class="search-box"><input id="search-input" type="text" placeholder="搜索..."></div>
+        <div class="list-container" id="chat-list"></div>
       </div>
-      <div class="setting-section"><h3>外观</h3>
-        <div class="setting-item"><span>主题模式</span><button id="theme-btn" class="glass-btn">切换深浅色</button></div>
+      <div class="chat-area" id="chat-area">
+        <div class="chat-header"><span id="chat-title">选择一个会话开始聊天</span><div class="chat-actions"><button class="icon-btn" id="btn-group-info" title="群信息" style="display:none">i</button></div></div>
+        <div class="group-announcement" id="group-announcement" style="display:none"></div>
+        <div class="messages-container" id="messages-container"><div class="empty-state"><div class="empty-icon">💬</div><p>选择一个会话开始聊天</p></div></div>
+        <div class="input-area">
+          <div class="emoji-panel" id="emoji-panel" style="display:none"></div>
+          <div class="input-toolbar"><button class="icon-btn" id="btn-emoji" title="表情">😊</button></div>
+          <div class="input-wrapper"><textarea id="message-input" placeholder="输入消息，Enter发送，Shift+Enter换行..."></textarea><button id="btn-send" class="send-btn">发送</button></div>
+        </div>
       </div>
-      <div class="setting-section"><h3>管理员</h3>
-        <div class="setting-item"><input id="admin-pass" type="password" placeholder="管理员密码" class="glass-input"><button id="admin-login" class="glass-btn">进入管理后台</button></div>
-        <div id="admin-panel" style="display:none"><div class="admin-stats" id="admin-stats"></div><div class="admin-users" id="admin-users"></div></div>
-      </div>
-      <div class="setting-section"><h3>账号</h3><button class="glass-btn" id="btn-logout">退出登录</button></div>
     </div>
-  </div>
 
-  <!-- 聊天主区域 -->
-  <div class="chat-area" id="chat-area">
-    <div class="chat-header"><span id="chat-title">选择一个会话开始聊天</span><div class="chat-actions"><button class="icon-btn" id="btn-group-info" title="群信息" style="display:none">i</button></div></div>
-    <div class="group-announcement" id="group-announcement" style="display:none"></div>
-    <div class="messages-container" id="messages-container"><div class="empty-state"><div class="empty-icon">💬</div><p>选择一个会话开始聊天</p></div></div>
-    <div class="input-area">
-      <div class="emoji-panel" id="emoji-panel" style="display:none"></div>
-      <div class="input-toolbar"><button class="icon-btn" id="btn-emoji" title="表情">😊</button></div>
-      <div class="input-wrapper"><textarea id="message-input" placeholder="输入消息，Enter发送，Shift+Enter换行..."></textarea><button id="btn-send" class="send-btn">发送</button></div>
+    <!-- 联系人页面 -->
+    <div class="page-layout" id="layout-contacts" style="display:none">
+      <div class="page-sidebar">
+        <div class="panel-header"><span class="panel-title">联系人</span><div class="panel-actions"><button class="icon-btn" id="btn-add-friend" title="添加好友">+</button></div></div>
+        <div class="contact-cats">
+          <div class="contact-cat active" data-cat="friends"><div class="cat-icon">👥</div><div><div class="cat-name">我的好友</div><div class="cat-count" id="friend-count">0 位联系人</div></div></div>
+          <div class="contact-cat" data-cat="requests"><div class="cat-icon">🔔</div><div><div class="cat-name">通知中心</div><div class="cat-count" id="request-count">0 条待处理</div></div></div>
+          <div class="contact-cat" data-cat="groups"><div class="cat-icon">👨‍👩‍👧‍👦</div><div><div class="cat-name">我的群聊</div><div class="cat-count" id="group-count">0 个群聊</div></div></div>
+        </div>
+      </div>
+      <div class="page-content" id="contacts-content"></div>
+    </div>
+
+    <!-- 动态页面 -->
+    <div class="page-layout" id="layout-space" style="display:none">
+      <div class="page-header"><span class="panel-title">好友动态</span><div class="panel-actions"><button class="icon-btn" id="btn-post-moment" title="发动态">✏️</button></div></div>
+      <div class="page-content-wide" id="space-container"></div>
+    </div>
+
+    <!-- 机器人页面 -->
+    <div class="page-layout" id="layout-bots" style="display:none">
+      <div class="page-header"><span class="panel-title">机器人广场</span><div class="panel-actions"><button class="icon-btn" id="btn-create-bot" title="创建机器人">+</button></div></div>
+      <div class="bot-stats">
+        <div class="bot-stat-card"><div class="stat-num" id="stat-total">0</div><div class="stat-label">广场机器人</div></div>
+        <div class="bot-stat-card"><div class="stat-num" id="stat-online">0</div><div class="stat-label">实时在线</div></div>
+        <div class="bot-stat-card"><div class="stat-num" id="stat-mine">0</div><div class="stat-label">我的机器人</div></div>
+      </div>
+      <div class="bot-tabs"><div class="bot-tab active" data-bottab="square">广场</div><div class="bot-tab" data-bottab="mine">我的机器人</div></div>
+      <div class="page-content-wide">
+        <div class="bot-grid" id="bot-grid"></div>
+      </div>
+    </div>
+
+    <!-- 任务页面 -->
+    <div class="page-layout" id="layout-tasks" style="display:none">
+      <div class="page-header"><span class="panel-title">任务待办</span><div class="panel-actions"><button class="icon-btn" id="btn-add-task" title="添加任务">+</button></div></div>
+      <div class="page-content-wide" id="task-container"></div>
+    </div>
+
+    <!-- 文件页面 -->
+    <div class="page-layout" id="layout-files" style="display:none">
+      <div class="page-header"><span class="panel-title">文件</span></div>
+      <div class="page-content-wide"><div class="empty-state"><div class="empty-icon">📁</div><p>文件功能开发中</p></div></div>
+    </div>
+
+    <!-- 收藏页面 -->
+    <div class="page-layout" id="layout-favorites" style="display:none">
+      <div class="page-header"><span class="panel-title">收藏</span></div>
+      <div class="page-content-wide"><div class="empty-state"><div class="empty-icon">⭐</div><p>收藏功能开发中</p></div></div>
+    </div>
+
+    <!-- 设置页面 -->
+    <div class="page-layout" id="layout-settings" style="display:none">
+      <div class="page-header"><span class="panel-title">设置</span></div>
+      <div class="page-content-wide">
+        <div class="settings-container">
+          <div class="setting-section"><h3>个人资料</h3>
+            <div class="setting-item"><span>昵称</span><input id="set-nick" class="glass-input" placeholder="昵称"></div>
+            <div class="setting-item"><span>个性签名</span><input id="set-sign" class="glass-input" placeholder="个性签名"></div>
+            <div class="setting-item"><span>当前状态</span><select id="status-select" class="glass-input"><option value="online">在线</option><option value="away">离开</option><option value="busy">忙碌</option><option value="offline">隐身</option></select></div>
+            <button class="glass-btn primary" id="btn-save-profile">保存资料</button>
+          </div>
+          <div class="setting-section"><h3>外观</h3>
+            <div class="setting-item"><span>主题模式</span><button id="theme-btn" class="glass-btn">切换深浅色</button></div>
+          </div>
+          <div class="setting-section"><h3>管理员</h3>
+            <div class="setting-item"><input id="admin-pass" type="password" placeholder="管理员密码" class="glass-input"><button id="admin-login" class="glass-btn">进入管理后台</button></div>
+            <div id="admin-panel" style="display:none"><div class="admin-stats" id="admin-stats"></div><div class="admin-users" id="admin-users"></div></div>
+          </div>
+          <div class="setting-section"><h3>账号</h3><button class="glass-btn" id="btn-logout">退出登录</button></div>
+        </div>
+      </div>
     </div>
   </div>
 

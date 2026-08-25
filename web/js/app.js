@@ -132,10 +132,11 @@ function logout() { state.token=null; state.user=null; localStorage.removeItem('
 function switchNav(nav) {
   state.currentNav=nav;
   $$('.nav-item[data-nav]').forEach(n=>n.classList.toggle('active',n.dataset.nav===nav));
-  ['chat','contacts','space','bots','tasks','files','favorites','settings'].forEach(n=>{
-    $('#panel-'+n).style.display = n===nav?'flex':'none';
+  // 切换布局
+  $('#layout-chat').style.display = nav==='chat'?'flex':'none';
+  ['contacts','space','bots','tasks','files','favorites','settings'].forEach(n=>{
+    $('#layout-'+n).style.display = n===nav?'flex':'none';
   });
-  $('#chat-area').style.display = (nav==='chat')?'flex':'none';
   $('#bot-detail-panel').style.display='none';
   $('#group-info-panel').style.display='none';
   if(nav==='contacts') renderContacts();
@@ -243,36 +244,42 @@ async function sendMessage() {
 
 /* ========== 联系人 ========== */
 function renderContacts() {
-  const box=$('#contacts-list'); box.innerHTML='';
+  const box=$('#contacts-content'); box.innerHTML='';
   if(state.currentContactCat==='friends') {
     const list=state.friends||[];
-    if(!list.length){box.innerHTML='<div class="empty-state" style="padding:40px"><div class="empty-icon">👥</div><p>暂无好友</p><p class="empty-sub">点右上角+添加</p></div>';return;}
-    list.forEach(f=>{
-      const item=document.createElement('div'); item.className='list-item';
-      item.innerHTML='<div class="avatar" style="background:linear-gradient(135deg,'+avatarColor(f.username)+','+avatarColor(f.username+'x')+')">'+esc(avatarText(f.nickname||f.username))+'</div><div class="list-item-info"><div class="list-item-name">'+esc(f.nickname||f.username)+'</div><div class="list-item-msg">@'+esc(f.username)+(f.signature?' · '+esc(f.signature):'')+'</div></div><div class="status-dot '+(f.status||'offline')+'"></div>';
-      item.onclick=()=>openConv(f);
-      box.appendChild(item);
+    if(!list.length){box.innerHTML='<div class="empty-state" style="padding:60px"><div class="empty-icon">👥</div><p>暂无好友</p><p class="empty-sub">点右上角+添加好友</p></div>';return;}
+    const grid=document.createElement('div'); grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px';
+    list.forEach((f,i)=>{
+      const card=document.createElement('div'); card.className='bot-card'; card.style.animationDelay=(i*0.03)+'s';
+      card.innerHTML='<div class="bot-card-header"><div class="avatar" style="background:linear-gradient(135deg,'+avatarColor(f.username)+','+avatarColor(f.username+'x')+')">'+esc(avatarText(f.nickname||f.username))+'</div><div style="flex:1"><div class="bot-card-name">'+esc(f.nickname||f.username)+'</div><div style="font-size:11px;color:var(--text-muted)">@'+esc(f.username)+'</div></div><div class="status-dot '+(f.status||'offline')+'"></div></div><div class="bot-card-desc">'+esc(f.signature||'这个人很懒，什么都没写')+'</div><div class="bot-card-footer"><span style="font-size:11px;color:var(--text-muted)">'+(f.status==='online'?'在线':f.status==='away'?'离开':f.status==='busy'?'忙碌':'离线')+'</span><button class="glass-btn primary" style="padding:6px 16px;font-size:12px">发消息</button></div>';
+      card.querySelector('.glass-btn').onclick=()=>openConv(f);
+      card.onclick=()=>openConv(f);
+      grid.appendChild(card);
     });
+    box.appendChild(grid);
   } else if(state.currentContactCat==='requests') {
     const list=state.requests||[];
-    if(!list.length){box.innerHTML='<div class="empty-state" style="padding:40px"><div class="empty-icon">🔔</div><p>暂无通知</p></div>';return;}
-    list.forEach(r=>{
+    if(!list.length){box.innerHTML='<div class="empty-state" style="padding:60px"><div class="empty-icon">🔔</div><p>暂无通知</p></div>';return;}
+    list.forEach((r,i)=>{
       const sender=r.sender||{};
-      const card=document.createElement('div'); card.className='notif-card';
-      card.innerHTML='<div class="avatar" style="background:linear-gradient(135deg,'+avatarColor(sender.username)+','+avatarColor(sender.username+'x')+')">'+esc(avatarText(sender.nickname||sender.username))+'</div><div style="flex:1"><div style="font-size:13px;font-weight:600">'+esc(sender.nickname||sender.username)+' 请求添加你为好友</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px">'+fmtTime(r.created_at)+'</div></div><div class="notif-actions"><button class="glass-btn primary" style="padding:5px 14px;font-size:12px">接受</button><button class="glass-btn" style="padding:5px 14px;font-size:12px">拒绝</button></div>';
+      const card=document.createElement('div'); card.className='notif-card'; card.style.animationDelay=(i*0.05)+'s';
+      card.innerHTML='<div class="avatar" style="background:linear-gradient(135deg,'+avatarColor(sender.username)+','+avatarColor(sender.username+'x')+')">'+esc(avatarText(sender.nickname||sender.username))+'</div><div style="flex:1"><div style="font-size:14px;font-weight:600">'+esc(sender.nickname||sender.username)+' 请求添加你为好友</div><div style="font-size:11px;color:var(--text-muted);margin-top:3px">'+fmtTime(r.created_at)+'</div></div><div class="notif-actions"><button class="glass-btn primary" style="padding:6px 16px;font-size:12px">接受</button><button class="glass-btn" style="padding:6px 16px;font-size:12px">拒绝</button></div>';
       card.querySelector('.glass-btn.primary').onclick=async()=>{try{await api('POST','/friends/requests/'+r.id+'/accept');await loadAll();renderContacts();}catch(e){alert(e.message);}};
       card.querySelectorAll('.glass-btn')[1].onclick=async()=>{try{await api('POST','/friends/requests/'+r.id+'/reject');await loadAll();renderContacts();}catch(e){alert(e.message);}};
       box.appendChild(card);
     });
   } else if(state.currentContactCat==='groups') {
     const list=(state.conversations||[]).filter(c=>c.type==='group');
-    if(!list.length){box.innerHTML='<div class="empty-state" style="padding:40px"><div class="empty-icon">👨‍👩‍👧‍👦</div><p>暂无群聊</p></div>';return;}
-    list.forEach(c=>{
-      const item=document.createElement('div'); item.className='list-item';
-      item.innerHTML='<div class="avatar" style="background:linear-gradient(135deg,'+avatarColor(c.title)+','+avatarColor(c.title+'x')+')">'+esc(avatarText(c.title))+'</div><div class="list-item-info"><div class="list-item-name">'+esc(c.title)+'</div><div class="list-item-msg">'+(c.member_count||0)+' 人</div></div>';
-      item.onclick=()=>openConv(c);
-      box.appendChild(item);
+    if(!list.length){box.innerHTML='<div class="empty-state" style="padding:60px"><div class="empty-icon">👨‍👩‍👧‍👦</div><p>暂无群聊</p><p class="empty-sub">去消息页面创建或加入群聊</p></div>';return;}
+    const grid=document.createElement('div'); grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px';
+    list.forEach((c,i)=>{
+      const card=document.createElement('div'); card.className='bot-card'; card.style.animationDelay=(i*0.03)+'s';
+      card.innerHTML='<div class="bot-card-header"><div class="avatar" style="background:linear-gradient(135deg,'+avatarColor(c.title)+','+avatarColor(c.title+'x')+')">'+esc(avatarText(c.title))+'</div><div style="flex:1"><div class="bot-card-name">'+esc(c.title)+'</div><div style="font-size:11px;color:var(--text-muted)">ID: '+c.id+'</div></div></div><div class="bot-card-desc">'+(c.announcement?esc(c.announcement):'暂无公告')+'</div><div class="bot-card-footer"><span style="font-size:11px;color:var(--text-muted)">'+(c.member_count||0)+' 人</span><button class="glass-btn primary" style="padding:6px 16px;font-size:12px">进入群聊</button></div>';
+      card.querySelector('.glass-btn').onclick=()=>openConv(c);
+      card.onclick=()=>openConv(c);
+      grid.appendChild(card);
     });
+    box.appendChild(grid);
   }
 }
 
