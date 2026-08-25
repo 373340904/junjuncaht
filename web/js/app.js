@@ -63,7 +63,15 @@ async function doLogin(){
   const u=$('#li-user').value.trim(),p=$('#li-pass').value;
   if(!u||!p){$('#li-msg').textContent='请输入用户名和密码';return;}
   $('#li-msg').textContent='';
-  try{const d=await api('POST','/auth/login',{username_or_email:u,password:p,remember_me:true});S.token=d.access_token;S.user=d.user;localStorage.setItem('jj_token',d.access_token);showMain();loadAll();connectWS();}catch(e){$('#li-msg').textContent=e.message;}
+  try{
+    // 先清除旧状态
+    if(S.ws){try{S.ws.close();}catch(e){}}
+    S={...S,token:null,user:null,conv:null,convs:[],friends:[],requests:[],bots:[],messages:{},ws:null,groupInfo:null};
+    localStorage.removeItem('jj_token');
+    const d=await api('POST','/auth/login',{username_or_email:u,password:p,remember_me:true});
+    S.token=d.access_token;S.user=d.user;localStorage.setItem('jj_token',d.access_token);
+    showMain();loadAll();connectWS();
+  }catch(e){$('#li-msg').textContent=e.message;}
 }
 async function doRegister(){
   const u=$('#re-user').value.trim(),n=$('#re-nick').value.trim(),p=$('#re-pass').value,p2=$('#re-pass2').value;
@@ -71,9 +79,22 @@ async function doRegister(){
   if(p!==p2){$('#li-msg').textContent='两次密码不一致';return;}
   if(p.length<6){$('#li-msg').textContent='密码至少6位';return;}
   $('#li-msg').textContent='';
-  try{const d=await api('POST','/auth/register',{username:u,password:p,nickname:n});S.token=d.access_token;S.user=d.user;localStorage.setItem('jj_token',d.access_token);showMain();loadAll();connectWS();}catch(e){$('#li-msg').textContent=e.message;}
+  try{
+    // 先清除旧状态
+    if(S.ws){try{S.ws.close();}catch(e){}}
+    S={...S,token:null,user:null,conv:null,convs:[],friends:[],requests:[],bots:[],messages:{},ws:null,groupInfo:null};
+    localStorage.removeItem('jj_token');
+    const d=await api('POST','/auth/register',{username:u,password:p,nickname:n});
+    S.token=d.access_token;S.user=d.user;localStorage.setItem('jj_token',d.access_token);
+    showMain();loadAll();connectWS();
+  }catch(e){$('#li-msg').textContent=e.message;}
 }
-function logout(){S.token=null;S.user=null;localStorage.removeItem('jj_token');if(S.ws)S.ws.close();showLogin();}
+function logout(){
+  if(S.ws){try{S.ws.close();}catch(e){}}
+  S.token=null;S.user=null;S.conv=null;S.convs=[];S.friends=[];S.requests=[];S.bots=[];S.messages={};S.ws=null;S.groupInfo=null;
+  localStorage.removeItem('jj_token');
+  showLogin();
+}
 
 /* ===== 导航 ===== */
 function switchNav(n){
