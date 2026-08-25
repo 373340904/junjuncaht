@@ -1,459 +1,516 @@
-/* ========== JunjunChat v5.0 ========== */
-const API = 'https://junjuncaht-production.up.railway.app';
-const EMOJIS = ['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇','🙂','😉','😍','🥰','😘','😗','😙','😚','😋','😛','😝','😜','🤪','🤨','🧐','🤓','😎','🤩','🥳','😏','😒','😞','😔','😟','😕','🙁','☹️','😣','😖','😫','😩','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰','😥','😓','🤗','🤔','🤭','🤫','🤥','😶','😐','😑','😬','🙄','😯','😦','😧','😮','😲','🥱','😴','🤤','😪','😵','🤐','🥴','🤢','🤮','🤧','😷','🤒','🤕','🤑','🤠','😈','👿','👹','👺','🤡','💩','👻','💀','👽','🤖','🎃','❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','💕','💞','💓','💗','💖','💘','💝','👍','👎','👌','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','👇','☝️','✋','🤚','🖐️','🖖','👋','🤝','👏','🙌','👐','🤲','🙏','✍️','💅','🤳','💪','🔥','⭐','🎉','🎊','🎁','🎈','💯','✅','❌','⚠️','❓','❗','💡','🔔','📢','💬','📱','💻','🎮','🎵','🎬','📚','✏️','📝','🔒','🔑','🏠','🚗','✈️','🌙','☀️','🌈','⭐','🌟','💫','⚡','🔥','💧','🌊','🌸','🌺','🌻','🌹','🌷','🍀','🌿','🌳','🌴','🌵','🍎','🍊','🍋','🍌','🍉','🍇','🍓','🍒','🍑','🥝','🍍','🥥','🍅','🥑','🥕','🌽','🥔','🍞','🧀','🥚','🍳','🥓','🍔','🍟','🍕','🌭','🥪','🌮','🌯','🥗','🍜','🍝','🍣','🍱','🥟','🍤','🍙','🍚','🍛','🍲','🥣','🍦','🍰','🎂','🍩','🍪','🍫','🍬','🍭','🍮','🍯','🥛','☕','🍵','🍶','🍺','🍻','🥂','🍷','🥃','🍸','🍹','🧃','🥤','🧊','💊','🧪','🔬','🧫','🧬','🦠','🧹','🧺','🧻','🚽','🚿','🛁','🧴','🧷','🧹','🧺','🧻','🚽','🚿','🛁','🧴','🧷'];
+/* JunjunChat v6.0 - KukeChat风格前端 */
+const API_BASE = 'https://junjuncaht-production.up.railway.app/api/v1';
+const WS_BASE = 'wss://junjuncaht-production.up.railway.app';
+const ADMIN_PASS = '225878';
+const S = {token:null,user:null,convs:[],friends:[],bots:[],activeConv:null,currentNav:'chat',msgCache:{},ws:null,wsReconnect:0,pollTimer:null,groupInfo:null,groupMembers:[],theme:'light',posts:[],tasks:[],favorites:[],teamups:[],onlineCount:0};
 
-let S = {
-  token: localStorage.getItem('jj_token')||null,
-  user: null, conv: null, nav: 'chat',
-  convs: [], friends: [], requests: [], bots: [],
-  messages: {}, ws: null, wsRetry: 0,
-  tasks: JSON.parse(localStorage.getItem('jj_tasks')||'[]'),
-  moments: [], adminToken: null, groupInfo: null,
-  pollTimer: null, lastMsgId: 0
-};
+// ========== 工具 ==========
+const $=id=>document.getElementById(id);
+const esc=s=>s==null?'':String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const avatarColor=n=>{const c=['#3b82f6','#8b5cf6','#06b6d4','#ec4899','#10b981','#f59e0b','#ef4444','#6366f1','#14b8a6','#a855f7'];let h=0;for(let i=0;i<(n||'?').length;i++)h=(n||'?').charCodeAt(i)+((h<<5)-h);return c[Math.abs(h)%c.length];};
+const avatarText=n=>n?n.trim().charAt(0).toUpperCase():'?';
+const fmtTime=iso=>{if(!iso)return'';try{const d=new Date(iso),n=new Date();if(d.toDateString()===n.toDateString())return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');return(d.getMonth()+1)+'/'+d.getDate()+' '+d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');}catch(e){return'';}};
+const avatarHTML=(name,size=40)=>`<div class="avatar" style="width:${size}px;height:${size}px;font-size:${Math.floor(size*0.4)}px;background:linear-gradient(135deg,${avatarColor(name)},${avatarColor(name+'x')})">${esc(avatarText(name))}</div>`;
 
-const $ = s => document.querySelector(s);
-const $$ = s => document.querySelectorAll(s);
-const esc = s => s==null?'':String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-const avC = n => {const c=['#007aff','#5856d6','#ff2d55','#ff9500','#34c759','#af52de','#ff3b30','#5ac8fa','#ffcc00','#8e8e93'];let h=0;for(let i=0;i<(n||'?').length;i++)h=(n||'?').charCodeAt(i)+((h<<5)-h);return c[Math.abs(h)%c.length]};
-const avT = n => (n||'?').trim().charAt(0).toUpperCase();
-const fmt = t => {if(!t)return'';try{const d=new Date(t),n=new Date();if(d.toDateString()===n.toDateString())return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');return (d.getMonth()+1)+'/'+d.getDate()+' '+d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');}catch(e){return''}};
-
-async function api(m,p,b){
+// ========== API ==========
+async function api(method,path,body){
   const h={'Content-Type':'application/json'};
   if(S.token)h['Authorization']='Bearer '+S.token;
-  const o={method:m,headers:h};
-  if(b!==undefined)o.body=JSON.stringify(b);
-  const r=await fetch(API+'/api/v1'+p,o);
-  const tx=await r.text();let d=null;try{d=tx?JSON.parse(tx):null;}catch(e){d={detail:tx};}
-  if(!r.ok)throw new Error((d&&(d.detail||d.message))||('HTTP '+r.status));
-  return d;
-}
-
-/* ===== 初始化 ===== */
-async function init(){
-  const th=localStorage.getItem('jj_theme')||'light';
-  document.documentElement.setAttribute('data-theme',th);
-  renderEmojis();bind();
-  // 不自动登录，显示登录页
-  showLogin();
-}
-
-function bind(){
-  $('#li-btn').onclick=doLogin;$('#li-pass').onkeydown=e=>{if(e.key==='Enter')doLogin();};
-  $('#to-reg').onclick=()=>{$('#login-form').style.display='none';$('#reg-form').style.display='block';$('#li-msg').textContent='';};
-  $('#to-login').onclick=()=>{$('#login-form').style.display='block';$('#reg-form').style.display='none';$('#li-msg').textContent='';};
-  $('#re-btn').onclick=doRegister;
-  $$('.nav-item[data-nav]').forEach(n=>n.onclick=()=>switchNav(n.dataset.nav));
-  $('#theme-toggle').onclick=toggleTheme;$('#sidebar-avatar').onclick=()=>switchNav('settings');
-  $('#btn-send').onclick=sendMsg;$('#message-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg();}};
-  $('#btn-emoji').onclick=()=>{$('#emoji-panel').style.display=$('#emoji-panel').style.display==='none'?'grid':'none';};
-  $('#search-input').oninput=e=>renderConvList(e.target.value);
-  $('#contact-search').oninput=e=>renderFriendList(e.target.value);
-  $('#btn-add-chat').onclick=showNewChat;$('#btn-add-friend').onclick=showAddFriend;
-  $('#btn-create-bot').onclick=showCreateBot;$('#btn-post-moment').onclick=showPostMoment;
-  $('#btn-group-menu').onclick=e=>showGroupMenu(e);$('#btn-close-gs').onclick=()=>{$('#group-sidebar').style.display='none';};
-  $('#modal-close').onclick=closeModal;$('#modal-cancel').onclick=closeModal;
-  document.addEventListener('click',e=>{if(!e.target.closest('.context-menu'))hideContextMenu();if(!e.target.closest('.popup-menu'))hidePopup();if(!e.target.closest('.user-card')&&!e.target.closest('.avatar')&&!e.target.closest('.gs-member')&&!e.target.closest('.member-item'))hideUserCard();});
-  document.addEventListener('contextmenu',e=>{const m=e.target.closest('.gs-member,.member-item');if(m){e.preventDefault();showMemberContext(e,m);}});
-}
-
-/* ===== 登录 ===== */
-function showLogin(){$('#login-panel').style.display='flex';$('#main-app').style.display='none';}
-function showMain(){$('#login-panel').style.display='none';$('#main-app').style.display='flex';$('#sidebar-avatar').textContent=avT(S.user.nickname||S.user.username);$('#sidebar-avatar').style.background='linear-gradient(135deg,'+avC(S.user.username)+','+avC(S.user.username+'x')+')';}
-async function doLogin(){
-  const u=$('#li-user').value.trim(),p=$('#li-pass').value;
-  const remember=$('#li-remember').checked;
-  if(!u||!p){$('#li-msg').textContent='请输入用户名和密码';return;}
-  $('#li-msg').textContent='';
+  const o={method,headers:h};
+  if(body!==undefined)o.body=JSON.stringify(body);
   try{
-    if(S.ws){try{S.ws.close();}catch(e){}}
-    S={...S,token:null,user:null,conv:null,convs:[],friends:[],requests:[],bots:[],messages:{},ws:null,groupInfo:null};
-    localStorage.removeItem('jj_token');
-    const d=await api('POST','/auth/login',{username_or_email:u,password:p,remember_me:remember});
+    const r=await fetch(API_BASE+path,o);
+    const t=await r.text();let d=null;try{d=t?JSON.parse(t):null;}catch(e){d={detail:t};}
+    if(!r.ok){let m=(d&&(d.detail||d.message))||('HTTP '+r.status);if(typeof m==='object')m=JSON.stringify(m);throw new Error(String(m));}
+    return d;
+  }catch(e){throw e;}
+}
+const apiGet=p=>api('GET',p);
+const apiPost=(p,b)=>api('POST',p,b);
+const apiPut=(p,b)=>api('PUT',p,b);
+const apiDel=p=>api('DELETE',p);
+
+// ========== 初始化 ==========
+window.addEventListener('DOMContentLoaded',()=>{
+  loadTheme();
+  bindLogin();
+  bindNav();
+  bindChat();
+  bindModal();
+  bindContextMenu();
+  // 检查自动登录
+  const saved=localStorage.getItem('jj_auto_login');
+  if(saved==='1'){
+    const t=localStorage.getItem('jj_token');
+    if(t){S.token=t;verifyLogin();}
+  }
+});
+
+function loadTheme(){
+  S.theme=localStorage.getItem('jj_theme')||'light';
+  document.documentElement.setAttribute('data-theme',S.theme);
+}
+function toggleTheme(){
+  S.theme=S.theme==='light'?'dark':'light';
+  localStorage.setItem('jj_theme',S.theme);
+  document.documentElement.setAttribute('data-theme',S.theme);
+}
+
+// ========== 登录注册 ==========
+function bindLogin(){
+  $('li-btn').onclick=doLogin;
+  $('li-pass').onkeydown=e=>{if(e.key==='Enter')doLogin();};
+  $('re-btn').onclick=doRegister;
+  $('to-reg').onclick=()=>{$('login-form').style.display='none';$('reg-form').style.display='block';$('li-msg').textContent='';};
+  $('to-login').onclick=()=>{$('login-form').style.display='block';$('reg-form').style.display='none';$('li-msg').textContent='';};
+}
+async function doLogin(){
+  const u=$('li-user').value.trim(),p=$('li-pass').value;
+  if(!u||!p){$('li-msg').textContent='请输入用户名和密码';return;}
+  $('li-msg').textContent='';
+  try{
+    const d=await apiPost('/auth/login',{username_or_email:u,password:p,remember_me:true});
     S.token=d.access_token;S.user=d.user;
-    if(remember)localStorage.setItem('jj_token',d.access_token);
-    showMain();loadAll();connectWS();startPolling();
-  }catch(e){$('#li-msg').textContent=e.message;}
+    if($('li-remember').checked){localStorage.setItem('jj_auto_login','1');localStorage.setItem('jj_token',S.token);}
+    else{localStorage.removeItem('jj_auto_login');localStorage.removeItem('jj_token');}
+    enterApp();
+  }catch(e){$('li-msg').textContent=e.message;}
 }
 async function doRegister(){
-  const u=$('#re-user').value.trim(),n=$('#re-nick').value.trim(),p=$('#re-pass').value,p2=$('#re-pass2').value;
-  if(!u||!p){$('#li-msg').textContent='请填写用户名和密码';return;}
-  if(p!==p2){$('#li-msg').textContent='两次密码不一致';return;}
-  if(p.length<6){$('#li-msg').textContent='密码至少6位';return;}
-  $('#li-msg').textContent='';
+  const u=$('re-user').value.trim(),n=$('re-nick').value.trim(),p=$('re-pass').value,p2=$('re-pass2').value;
+  if(!u||!p){$('li-msg').textContent='请填写用户名和密码';return;}
+  if(p!==p2){$('li-msg').textContent='两次密码不一致';return;}
+  if(p.length<6){$('li-msg').textContent='密码至少6位';return;}
+  $('li-msg').textContent='';
   try{
-    if(S.ws){try{S.ws.close();}catch(e){}}
-    S={...S,token:null,user:null,conv:null,convs:[],friends:[],requests:[],bots:[],messages:{},ws:null,groupInfo:null};
-    localStorage.removeItem('jj_token');
-    const d=await api('POST','/auth/register',{username:u,password:p,nickname:n});
+    const b={username:u,password:p};if(n)b.nickname=n;
+    const d=await apiPost('/auth/register',b);
     S.token=d.access_token;S.user=d.user;
-    // 注册后不自动保存 token，下次需要手动登录
-    showMain();loadAll();connectWS();startPolling();
-  }catch(e){$('#li-msg').textContent=e.message;}
+    localStorage.setItem('jj_auto_login','1');localStorage.setItem('jj_token',S.token);
+    enterApp();
+  }catch(e){$('li-msg').textContent=e.message;}
+}
+async function verifyLogin(){
+  try{const u=await apiGet('/auth/me');S.user=u;enterApp();}catch(e){S.token=null;localStorage.removeItem('jj_token');localStorage.removeItem('jj_auto_login');}
+}
+function enterApp(){
+  $('login-panel').style.display='none';
+  $('main-app').style.display='flex';
+  $('sidebar-avatar').textContent=avatarText(S.user.nickname||S.user.username);
+  loadConvs();loadFriends();loadBots();connectWS();startPolling();
+  switchNav('chat');
 }
 function logout(){
-  if(S.ws){try{S.ws.close();}catch(e){}}
-  stopPolling();
-  S.token=null;S.user=null;S.conv=null;S.convs=[];S.friends=[];S.requests=[];S.bots=[];S.messages={};S.ws=null;S.groupInfo=null;
-  localStorage.removeItem('jj_token');
-  showLogin();
+  closeWS();stopPolling();
+  S.token=null;S.user=null;S.convs=[];S.activeConv=null;S.msgCache={};
+  localStorage.removeItem('jj_token');localStorage.removeItem('jj_auto_login');
+  $('main-app').style.display='none';
+  $('login-panel').style.display='flex';
+  $('li-user').value='';$('li-pass').value='';
 }
 
-/* ===== 导航 ===== */
-function switchNav(n){
-  S.nav=n;
-  $$('.nav-item[data-nav]').forEach(x=>x.classList.toggle('active',x.dataset.nav===n));
-  $('#layout-chat').style.display=n==='chat'?'flex':'none';
-  ['contacts','space','bots','settings'].forEach(x=>{$('#layout-'+x).style.display=x===n?'flex':'none';});
-  $('#group-sidebar').style.display='none';
-  if(n==='contacts')renderContacts();
-  if(n==='bots')loadBots();
-  if(n==='space')renderMoments();
-  if(n==='settings')renderSettings();
+// ========== 导航 ==========
+function bindNav(){
+  document.querySelectorAll('.kc-rail-item[data-nav]').forEach(el=>{
+    el.onclick=()=>switchNav(el.dataset.nav);
+  });
+  $('btn-create-group').onclick=showCreateGroupModal;
+  $('btn-announcement').onclick=showAnnouncement;
+  $('sidebar-avatar').onclick=showProfile;
+  $('btn-list-add').onclick=handleListAdd;
+  $('search-input').oninput=e=>renderList(e.target.value);
+}
+function switchNav(nav){
+  S.currentNav=nav;
+  document.querySelectorAll('.kc-rail-item[data-nav]').forEach(el=>el.classList.toggle('active',el.dataset.nav===nav));
+  const titles={chat:'消息',teamup:'组队中心',posts:'动态',contacts:'联系人',bots:'机器人',home:'主页',tasks:'任务',favorites:'收藏',settings:'设置'};
+  $('list-title').textContent=titles[nav]||'';
+  // 显示/隐藏列表面板
+  const showList=['chat','contacts','bots'].includes(nav);
+  $('list-panel').style.display=showList?'flex':'none';
+  // 切换视图
+  document.querySelectorAll('.kc-view').forEach(v=>v.style.display='none');
+  const view=$('view-'+nav);
+  if(view)view.style.display='flex';
+  // 搜索框
+  $('search-input').value='';
+  // 渲染
+  if(nav==='chat')renderList();
+  else if(nav==='contacts')renderContacts();
+  else if(nav==='bots')renderBots();
+  else if(nav==='posts')renderPosts();
+  else if(nav==='home')renderHome();
+  else if(nav==='teamup')renderTeamup();
+  else if(nav==='tasks')renderTasks();
+  else if(nav==='favorites')renderFavorites();
+  else if(nav==='settings')renderSettings();
 }
 
-/* ===== 加载 ===== */
-async function loadAll(){await Promise.all([loadConvs(),loadFriends(),loadRequests()]);renderConvList();}
-async function loadConvs(){try{S.convs=await api('GET','/conversations');}catch(e){S.convs=[];}}
-async function loadFriends(){try{S.friends=await api('GET','/friends');}catch(e){S.friends=[];}}
-async function loadRequests(){try{S.requests=await api('GET','/friends/requests/incoming');}catch(e){S.requests=[];}}
-async function loadBots(){try{S.bots=await api('GET','/bots/mine');}catch(e){S.bots=[];}renderBots();}
-
-/* ===== 会话列表 ===== */
-function renderConvList(f){
-  const box=$('#chat-list');box.innerHTML='';
+// ========== 列表渲染 ==========
+function renderList(filter){
+  const box=$('list-container');
+  if(S.currentNav==='chat')renderConvList(box,filter);
+  else if(S.currentNav==='contacts')renderFriendList(box,filter);
+  else if(S.currentNav==='bots')renderBotList(box,filter);
+}
+function renderConvList(box,filter){
   let list=S.convs||[];
-  if(f)list=list.filter(c=>(c.title||'').toLowerCase().includes(f.toLowerCase()));
-  if(!list.length){box.innerHTML='<div class="empty-state" style="padding:40px"><div class="empty-icon">💬</div><p>暂无会话</p></div>';return;}
-  list.forEach((c,i)=>{
-    const name=c.title||'会话',last=c.last_message?c.last_message.content:'';
-    const el=document.createElement('div');el.className='list-item'+(S.conv&&S.conv.id===c.id?' active':'');el.style.animationDelay=(i*0.02)+'s';
-    el.innerHTML='<div class="avatar" style="background:linear-gradient(135deg,'+avC(name)+','+avC(name+'x')+')">'+esc(avT(name))+'</div><div class="list-item-info"><div class="list-item-name">'+esc(name)+'</div><div class="list-item-msg">'+esc(last||'暂无消息')+'</div></div>'+(c.type==='group'?'<span style="font-size:10px;color:var(--text-3)">群</span>':'');
-    el.onclick=()=>openConv(c);box.appendChild(el);
-  });
+  if(filter)list=list.filter(c=>(c.title||'').toLowerCase().includes(filter.toLowerCase()));
+  if(!list.length){box.innerHTML='<div class="empty-state" style="padding:40px 20px"><div class="empty-icon">💬</div><p>暂无会话</p></div>';return;}
+  box.innerHTML=list.map(c=>{
+    const last=c.last_message?c.last_message.content:'';
+    return `<div class="kc-list-item ${S.activeConv&&S.activeConv.id===c.id?'active':''}" onclick="openConv(${c.id})">
+      ${avatarHTML(c.title)}
+      <div class="kc-list-item-info">
+        <div class="kc-list-item-name">${esc(c.title||'会话')}</div>
+        <div class="kc-list-item-msg">${esc(last||'暂无消息')}</div>
+      </div>
+      ${c.type==='group'?'<span style="font-size:10px;color:var(--kc-muted)">群</span>':''}
+    </div>`;
+  }).join('');
 }
-
-/* ===== 打开会话 ===== */
-async function openConv(c){
-  if(c.username){try{c=await api('POST','/conversations/direct',{user_id:c.id});await loadConvs();}catch(e){return;}}
-  S.conv=c;$('#chat-title').textContent=c.title||'会话';
-  $('#btn-group-menu').style.display=c.type==='group'?'flex':'none';
-  $('#messages-container').innerHTML='<div style="text-align:center;color:var(--text-2);padding:20px;font-size:13px">加载中...</div>';
-  if(!S.messages[c.id]){try{S.messages[c.id]=await api('GET','/conversations/'+c.id+'/messages?limit=50');}catch(e){S.messages[c.id]=[];}}
-  renderMsgs();renderConvList();
-  if(c.type==='group')loadGroupInfo(c.id);
-  else $('#group-sidebar').style.display='none';
-  if(c.announcement){$('#group-announcement').style.display='block';$('#group-announcement').textContent='📢 '+c.announcement;}else $('#group-announcement').style.display='none';
-}
-
-async function loadGroupInfo(id){
-  try{S.groupInfo=await api('GET','/conversations/'+id);$('#group-sidebar').style.display='flex';renderGroupSidebar();}catch(e){}
-}
-
-function renderGroupSidebar(){
-  const g=S.groupInfo;if(!g)return;
-  const box=$('#gs-content');
-  const isOwner=String(g.owner_id)===String(S.user.id);
-  const myRole=g.members.find(m=>String(m.id)===String(S.user.id))?.role||'member';
-  const canManage=isOwner||myRole==='admin';
-  box.innerHTML='<div class="gs-section"><div class="gs-avatar" style="background:linear-gradient(135deg,'+avC(g.title)+','+avC(g.title+'x')+')">'+esc(avT(g.title))+'</div><div class="gs-name">'+esc(g.title)+'</div><div class="gs-id">群ID: '+g.id+' · '+g.member_count+' 人</div></div>'+
-    '<div class="gs-section"><div class="gs-section-title">群公告</div><div class="gs-announcement">'+esc(g.announcement||'暂无公告')+'</div>'+(canManage?'<button class="gs-btn" style="margin-top:8px" onclick="editAnnouncement()">编辑公告</button>':'')+'</div>'+
-    '<div class="gs-section"><div class="gs-section-title">群成员 ('+g.members.length+')</div>'+g.members.map(m=>'<div class="gs-member" onclick="showUserCard('+m.id+')"><div class="avatar" style="width:32px;height:32px;font-size:12px;background:linear-gradient(135deg,'+avC(m.username)+','+avC(m.username+'x')+')">'+esc(avT(m.nickname||m.username))+'</div><div class="gs-member-name">'+esc(m.nickname||m.username)+'</div>'+(m.role==='owner'?'<span class="gs-role owner">群主</span>':m.role==='admin'?'<span class="gs-role admin">管理员</span>':'')+'</div>').join('')+'</div>'+
-    '<div class="gs-section">'+(canManage?'<button class="gs-btn" onclick="showGroupMembersManage()">成员管理</button>':'')+'<button class="gs-btn" onclick="leaveGroup()">退出群聊</button>'+(isOwner?'<button class="gs-btn danger" onclick="dissolveGroup()">解散群聊</button>':'')+'</div>';
-}
-
-function renderMsgs(){
-  const box=$('#messages-container');
-  if(!S.conv){box.innerHTML='<div class="empty-state"><div class="empty-icon">💬</div><p>选择一个会话开始聊天</p></div>';return;}
-  const msgs=S.messages[S.conv.id]||[];
-  if(!msgs.length){box.innerHTML='<div class="empty-state"><div class="empty-icon">👋</div><p>开始聊天吧</p></div>';return;}
-  box.innerHTML='';
-  msgs.forEach(m=>{
-    const me=S.user&&String(m.sender_id)===String(S.user.id);
-    const s=m.sender||{},name=s.nickname||s.username||'用户';
-    const el=document.createElement('div');el.className='message'+(me?' me':' other');
-    let content=esc(m.content);
-    try{if(window.marked)content=marked.parse(m.content);}catch(e){}
-    el.innerHTML='<div class="message-avatar" style="background:linear-gradient(135deg,'+avC(name)+','+avC(name+'x')+')">'+esc(avT(name))+'</div><div class="message-body">'+(!me?'<div class="message-sender">'+esc(name)+'</div>':'')+'<div class="message-bubble markdown-body">'+content+'</div><div class="message-time">'+fmt(m.created_at)+'</div></div>';
-    box.appendChild(el);
-  });
-  box.scrollTop=box.scrollHeight;
-}
-
-async function sendMsg(){
-  const inp=$('#message-input'),c=inp.value.trim();
-  if(!c||!S.conv)return;inp.value='';
-  try{const m=await api('POST','/conversations/'+S.conv.id+'/messages',{content:c});if(!S.messages[S.conv.id])S.messages[S.conv.id]=[];S.messages[S.conv.id].push(m);renderMsgs();await loadConvs();renderConvList();}catch(e){inp.value=c;alert('发送失败: '+e.message);}
-}
-
-/* ===== 联系人 ===== */
-function renderContacts(){
-  renderFriendList();
-  renderNotifications();
-}
-function renderFriendList(filter){
-  const box=$('#friend-list');if(!box)return;box.innerHTML='';
+function renderFriendList(box,filter){
   let list=S.friends||[];
   if(filter)list=list.filter(f=>(f.nickname||f.username||'').toLowerCase().includes(filter.toLowerCase()));
-  if(!list.length){box.innerHTML='<div class="empty-state" style="padding:30px"><div class="empty-icon">👥</div><p>暂无好友</p></div>';return;}
-  list.forEach((f,i)=>{
-    const item=document.createElement('div');item.className='list-item';item.style.animationDelay=(i*0.02)+'s';
-    item.innerHTML='<div class="avatar" style="background:linear-gradient(135deg,'+avC(f.username)+','+avC(f.username+'x')+')">'+esc(avT(f.nickname||f.username))+'</div><div class="list-item-info"><div class="list-item-name">'+esc(f.nickname||f.username)+'</div><div class="list-item-msg">@'+esc(f.username)+'</div></div><div class="status-dot '+(f.status||'offline')+'"></div>';
-    item.onclick=()=>openConv(f);box.appendChild(item);
-  });
+  if(!list.length){box.innerHTML='<div class="empty-state" style="padding:40px 20px"><div class="empty-icon">👥</div><p>暂无好友<br>点右上角+添加</p></div>';return;}
+  box.innerHTML=list.map(f=>`<div class="kc-list-item" onclick="openDirect(${f.id})">
+    ${avatarHTML(f.nickname||f.username)}
+    <div class="kc-list-item-info"><div class="kc-list-item-name">${esc(f.nickname||f.username)}</div><div class="kc-list-item-msg">@${esc(f.username)}</div></div>
+    <div class="status-dot ${f.status==='online'?'online':'offline'}"></div>
+  </div>`).join('');
 }
-function renderNotifications(){
-  const box=$('#notif-container');if(!box)return;box.innerHTML='';
-  if(S.requests.length){
-    box.innerHTML='<h3 style="font-size:13px;color:var(--text-2);margin-bottom:12px;font-weight:600">好友请求 ('+S.requests.length+')</h3>'+S.requests.map(r=>{const s=r.sender||{};return '<div class="notif-card"><div class="avatar" style="width:36px;height:36px;font-size:13px;background:linear-gradient(135deg,'+avC(s.username)+','+avC(s.username+'x')+')">'+esc(avT(s.nickname||s.username))+'</div><div style="flex:1"><div style="font-size:14px;font-weight:600">'+esc(s.nickname||s.username)+' 请求添加好友</div><div style="font-size:11px;color:var(--text-2);margin-top:2px">'+fmt(r.created_at)+'</div></div><div class="notif-actions"><button class="glass-btn primary" style="padding:6px 14px;font-size:12px" onclick="acceptReq('+r.id+')">接受</button><button class="glass-btn" style="padding:6px 14px;font-size:12px" onclick="rejectReq('+r.id+')">拒绝</button></div></div>';}).join('');
-  }else{
-    box.innerHTML='<div class="empty-state" style="padding:60px"><div class="empty-icon">🔔</div><p>暂无通知</p></div>';
-  }
-}
-async function acceptReq(id){try{await api('POST','/friends/requests/'+id+'/accept');await loadAll();renderContacts();}catch(e){alert(e.message);}}
-async function rejectReq(id){try{await api('POST','/friends/requests/'+id+'/reject');await loadAll();renderContacts();}catch(e){alert(e.message);}}
-
-/* ===== 机器人 ===== */
-function renderBots(){
-  const bots=S.bots||[];
-  const online=bots.filter(b=>b.is_online).length;
-  // 统计卡片
-  $('#bot-stats').innerHTML=[
-    {num:bots.length,label:'机器人总数'},
-    {num:online,label:'在线'},
-    {num:bots.length-online,label:'离线'},
-    {num:S.convs.filter(c=>c.type==='group').length,label:'群聊数'}
-  ].map((s,i)=>'<div class="bot-stat-card" style="animation-delay:'+(i*0.05)+'s"><div class="bot-stat-num">'+s.num+'</div><div class="bot-stat-label">'+s.label+'</div></div>').join('');
-  // 网格
-  const box=$('#bots-content');box.innerHTML='';
-  if(!bots.length){box.innerHTML='<div class="empty-state" style="padding:60px"><div class="empty-icon">🤖</div><p>暂无机器人</p><p style="font-size:12px;margin-top:4px">点右上角+创建</p></div>';return;}
-  bots.forEach((b,i)=>{
-    const c=document.createElement('div');c.className='bot-card';c.style.animationDelay=(i*0.05)+'s';
-    c.innerHTML='<div class="bot-card-header"><div class="bot-card-avatar">B</div><div style="flex:1"><div class="bot-card-name">'+esc(b.name)+'</div><div style="font-size:11px;color:var(--text-2)">ID: '+b.id+'</div></div><span class="badge '+(b.is_online?'online':'offline')+'">'+(b.is_online?'在线':'离线')+'</span></div><div class="bot-card-desc">'+esc(b.description||'暂无描述')+'</div><div class="bot-card-footer"><span style="font-size:10px;color:var(--text-3);font-family:monospace">'+esc((b.bot_key||'').substring(0,18))+'...</span><button class="glass-btn primary" style="padding:6px 14px;font-size:12px">详情</button></div>';
-    c.querySelector('.glass-btn').onclick=e=>{e.stopPropagation();showBotDetail(b);};
-    c.onclick=()=>showBotDetail(b);
-    box.appendChild(c);
-  });
-}
-function showBotDetail(b){
-  const myGroups=(S.convs||[]).filter(c=>c.type==='group');
-  showModal('机器人: '+b.name,
-    '<div style="margin-bottom:14px"><div style="font-size:12px;color:var(--text-2);margin-bottom:6px">Bot Key（点击复制）</div><div class="bot-key-box" onclick="navigator.clipboard.writeText(this.textContent)">'+esc(b.bot_key)+'</div></div>'+
-    '<div style="margin-bottom:14px"><div style="font-size:12px;color:var(--text-2);margin-bottom:6px">WebSocket</div><div class="code-block">wss://junjuncaht-production.up.railway.app/bot/ws?key='+esc(b.bot_key)+'</div></div>'+
-    '<div style="margin-bottom:14px"><div style="font-size:12px;color:var(--text-2);margin-bottom:6px">加入群聊</div>'+
-    (myGroups.length?myGroups.map(g=>'<div class="setting-item"><span>'+esc(g.title)+'</span><button class="glass-btn primary" style="padding:5px 12px;font-size:11px" onclick="joinBotToGroup('+b.id+','+g.id+')">加入</button></div>').join(''):'<div style="font-size:12px;color:var(--text-2)">你还没有管理的群聊</div>')+
-    '</div>'+
-    '<div><div style="font-size:12px;color:var(--text-2);margin-bottom:6px">Python 示例</div><div class="code-block">import websocket, json, requests\nKEY="'+esc(b.bot_key)+'"\ndef on_msg(ws,msg):\n  d=json.loads(msg)\n  if d["type"]=="message.created":\n    m=d["data"]\n    requests.post(f"https://junjuncaht-production.up.railway.app/bot-api/conversations/{m[\'conversation_id\']}/messages",headers={"Authorization":f"Bot {KEY}"},json={"message":"收到！"})\nws=websocket.WebSocketApp(f"wss://junjuncaht-production.up.railway.app/bot/ws?key={KEY}",on_message=on_msg)\nws.run_forever()</div></div>',null);
-}
-async function joinBotToGroup(bid,gid){
-  try{await api('POST','/bots/'+bid+'/join/'+gid);alert('机器人已加入群聊！');closeModal();}catch(e){alert('加入失败: '+e.message);}
+function renderBotList(box,filter){
+  let list=S.bots||[];
+  if(filter)list=list.filter(b=>(b.name||'').toLowerCase().includes(filter.toLowerCase()));
+  if(!list.length){box.innerHTML='<div class="empty-state" style="padding:40px 20px"><div class="empty-icon">🤖</div><p>暂无机器人<br>点右上角+创建</p></div>';return;}
+  box.innerHTML=list.map(b=>`<div class="kc-list-item" onclick="showBotDetail(${b.id})">
+    <div class="avatar" style="background:linear-gradient(135deg,#8b5cf6,#3b82f6)">B</div>
+    <div class="kc-list-item-info"><div class="kc-list-item-name">${esc(b.name)}</div><div class="kc-list-item-msg">${esc(b.description||'机器人')}</div></div>
+    <span class="badge ${b.is_online?'online':'offline'}">${b.is_online?'在线':'离线'}</span>
+  </div>`).join('');
 }
 
-/* ===== 动态 ===== */
-function renderMoments(){
-  const box=$('#space-container');box.innerHTML='';
-  if(!S.moments.length){box.innerHTML='<div class="empty-state" style="padding:60px"><div class="empty-icon">📷</div><p>暂无动态</p><p style="font-size:12px;margin-top:4px">点右上角✏️发布</p></div>';return;}
-  S.moments.forEach((m,i)=>{
-    const c=document.createElement('div');c.className='moment-card';c.style.animationDelay=(i*0.05)+'s';
-    c.innerHTML='<div class="moment-header"><div class="avatar" style="width:40px;height:40px;font-size:15px;background:linear-gradient(135deg,'+avC(m.author)+','+avC(m.author+'x')+')">'+esc(avT(m.author))+'</div><div><div style="font-size:14px;font-weight:600">'+esc(m.author)+'</div><div style="font-size:11px;color:var(--text-2)">'+fmt(m.time)+'</div></div></div><div class="moment-content">'+esc(m.content)+'</div>';
-    box.appendChild(c);
-  });
+// ========== 数据加载 ==========
+async function loadConvs(){try{S.convs=await apiGet('/conversations');if(S.currentNav==='chat')renderList();}catch(e){S.convs=[];}}
+async function loadFriends(){try{S.friends=await apiGet('/friends');if(S.currentNav==='contacts')renderList();}catch(e){S.friends=[];}}
+async function loadBots(){try{S.bots=await apiGet('/bots/mine');if(S.currentNav==='bots'){renderList();renderBotsPage();}}catch(e){S.bots=[];}}
+
+// ========== 聊天 ==========
+function bindChat(){
+  $('btn-send').onclick=sendMsg;
+  $('message-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.ctrlKey){e.preventDefault();sendMsg();}};
+  $('btn-emoji').onclick=toggleEmoji;
+  $('btn-group-menu').onclick=e=>{e.stopPropagation();showGroupMenu(e);};
+  $('btn-close-gs').onclick=()=>{$('group-sidebar').style.display='none';};
+}
+async function openConv(id){
+  const c=S.convs.find(x=>x.id===id);if(!c)return;
+  S.activeConv=c;
+  $('chat-title').textContent=c.title||'会话';
+  $('btn-group-menu').style.display=c.type==='group'?'flex':'none';
+  $('group-announcement').style.display='none';
+  $('group-sidebar').style.display='none';
+  if(!S.msgCache[id]){try{S.msgCache[id]=await apiGet('/conversations/'+id+'/messages?limit=50');}catch(e){S.msgCache[id]=[];}}
+  renderMessages();
+  if(c.type==='group'){loadGroupInfo(id);}
+  renderList();
+}
+async function openDirect(uid){
+  try{const c=await apiPost('/conversations/direct',{user_id:uid});await loadConvs();openConv(c.id);switchNav('chat');}catch(e){alert(e.message);}
+}
+function renderMessages(){
+  const box=$('messages-container');if(!S.activeConv)return;
+  const msgs=S.msgCache[S.activeConv.id]||[];
+  if(!msgs.length){box.innerHTML='<div class="empty-state"><div class="empty-icon">💬</div><p>开始聊天吧</p></div>';return;}
+  box.innerHTML=msgs.map(m=>{
+    const isMe=S.user&&String(m.sender_id)===String(S.user.id);
+    const s=m.sender||{};const name=s.nickname||s.username||'用户';
+    let content=esc(m.content);
+    try{content=marked.parse(m.content);}catch(e){}
+    return `<div class="message ${isMe?'me':'other'}">
+      ${avatarHTML(name,34)}
+      <div class="message-body">
+        ${!isMe?`<div class="message-sender">${esc(name)}</div>`:''}
+        <div class="message-bubble ${isMe?'me':'other'}"><div class="markdown-body">${content}</div></div>
+        <div class="message-time">${fmtTime(m.created_at)}</div>
+      </div>
+    </div>`;
+  }).join('');
+  box.scrollTop=box.scrollHeight;
+}
+async function sendMsg(){
+  const input=$('message-input');const content=input.value.trim();
+  if(!content||!S.activeConv)return;
+  input.value='';
+  try{
+    const m=await apiPost('/conversations/'+S.activeConv.id+'/messages',{content});
+    if(!S.msgCache[S.activeConv.id])S.msgCache[S.activeConv.id]=[];
+    S.msgCache[S.activeConv.id].push(m);
+    renderMessages();loadConvs();
+  }catch(e){input.value=content;alert('发送失败: '+e.message);}
 }
 
-/* ===== 设置 ===== */
-function renderSettings(){
-  const box=$('#settings-content');
-  box.innerHTML='<div class="setting-section"><h3>个人资料</h3><div class="setting-item"><span>昵称</span><input id="set-nick" class="glass-input" value="'+esc(S.user.nickname||'')+'"></div><div class="setting-item"><span>个性签名</span><input id="set-sign" class="glass-input" value="'+esc(S.user.signature||'')+'"></div><div class="setting-item"><span>状态</span><select id="set-status" class="glass-input"><option value="online">在线</option><option value="away">离开</option><option value="busy">忙碌</option><option value="offline">隐身</option></select></div><div class="setting-item"><span>头像字符</span><input id="set-avatar" class="glass-input" maxlength="2" value="'+esc(S.user.avatar||'')+'"></div><button class="glass-btn primary" style="width:100%;margin:10px 0" onclick="saveProfile()">保存</button></div>'+
-    '<div class="setting-section"><h3>外观</h3><div class="setting-item"><span>深色模式</span><button class="glass-btn" onclick="toggleTheme()">切换</button></div></div>'+
-    '<div class="setting-section"><h3>管理员</h3><div class="setting-item"><input id="admin-pass" type="password" class="glass-input" placeholder="管理员密码"><button class="glass-btn primary" onclick="adminLogin()">进入</button></div><div id="admin-panel" style="display:none;padding:10px 0"></div></div>'+
-    '<div class="setting-section"><h3>账号</h3><button class="glass-btn danger" style="width:100%" onclick="logout()">退出登录</button></div>';
-  $('#set-status').value=S.user.status||'online';
+// ========== 表情 ==========
+const EMOJIS=['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇','🙂','🙃','😉','😌','😍','🥰','😘','😗','😙','😚','😋','😛','😝','😜','🤪','🤨','🧐','🤓','😎','🤩','🥳','😏','😒','😞','😔','😟','😕','🙁','☹️','😣','😖','😫','😩','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰','😥','😓','🤗','🤔','🤭','🤫','🤥','😶','😐','😑','😬','🙄','😯','😦','😧','😮','😲','🥱','😴','🤤','😪','😵','🤐','🥴','🤢','🤮','🤧','😷','🤒','🤕','🤑','🤠','😈','👿','👹','👺','🤡','💩','👻','💀','☠️','👽','👾','🤖','🎃','😺','😸','😹','😻','😼','😽','🙀','😿','😾','❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','👍','👎','👌','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','👇','☝️','✋','🤚','🖐️','🖖','👋','🤝','👏','🙌','👐','🤲','🙏','✍️','💪','🦾','🦵','🦶','👂','👃','🧠','🦷','🦴','👀','👁️','👅','👄','💋','🗣️','👤','👥','👶','👧','🧒','👦','👩','🧑','👨','👵','🧓','👴','👲','🧕','👮','🕵️','💂','🥷','👷','🤵','👰','🤰','👼','🎅','🤶','🦸','🦹','🧙','🧝','🧛','🧟','🧞','🧜','🧚','👯','💃','🕺','👫','👬','👭','🚶','🏃','💃','🕺','👯','🧖','🧗','🤺','🏇','⛷️','🏂','🏋️','🤼','🤸','⛹️','🤾','🏌️','🏄','🏊','🤽','🚣','🧘','🛀','🛌','👭','👫','👬','💑','💏','👪','👨‍👩‍👧','👨‍👩‍👧‍👦','👨‍👩‍👦‍👦','👨‍👩‍👧‍👧','👩‍👩‍👦','👩‍👩‍👧','👩‍👩‍👧‍👦','👨‍👨‍👦','👨‍👨‍👧','👨‍👨‍👧‍👦','🌞','🌝','🌛','🌜','🌚','🌕','🌖','🌗','🌘','🌑','🌒','🌓','🌔','🌙','🌎','🌍','🌏','⭐','🌟','✨','⚡','🔥','💧','🌊','🌈','☀️','⛅','☁️','🌧️','⛈️','🌩️','🌨️','❄️','☃️','⛄','🌬️','💨','🌪️','🌫️','🌫','🌁','❄️','☃️','⛄','🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍈','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🍆','🥑','🥦','🥬','🥒','🌶️','🌽','🥕','🧄','🧅','🥔','🍠','🥐','🍞','🥖','🥨','🧀','🥚','🍳','🧈','🥞','🧇','🥓','🥩','🍗','🍖','🌭','🍔','🍟','🍕','🥪','🥙','🧆','🌮','🌯','🥗','🥘','🍝','🍜','🍲','🍛','🍣','🍱','🥟','🦪','🍤','🍙','🍚','🍘','🍥','🥠','🍢','🍡','🍧','🍨','🍦','🥧','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍿','🍩','🍪','🌰','🥜','🍯','🥛','🍵','☕','🍶','🍾','🍷','🍸','🍹','🍺','🥂','🥃','🍼','🥤','🧃','🧉','🧊','🥢','🍽️','🍴','🥄','🔪','🏺','🌍','🌎','🌏','🌐','🗺️','🧭','🏔️','⛰️','🌋','🗻','🏕️','🏖️','🏜️','🏝️','🏞️','🏟️','🏛️','🏗️','🧱','⛺','🏠','🏡','🏢','🏬','🏣','🏤','🏥','🏦','🏨','🏩','🏪','🏫','🏭','🏯','🏰','💒','🗼','🗽','⛪','🕌','🕍','🛕','🕋','⛩️','🕯️','🪔','💎','⚖️','🧰','🔧','🔨','⚒️','🛠️','⛏️','🔩','⚙️','🔫','💣','🧨','🪓','🔪','🗡️','⚔️','🛡️','🚬','⚰️','🪦','⚱️','🏺','🔮','📿','🧿','💈','⚗️','🔭','🔬','🕳️','💊','💉','🩹','🩺','❤️‍🩹','🩸','🧬','🦠','🧫','🧪','🌡️','🧹','🧺','🧻','🚽','🚰','🚿','🛁','🛀','🧼','🪥','🪒','🧽','🪣','🧯','🛎️','🔑','🗝️','🚪','🪑','🛋️','🛏️','🛌','🧸','🖼️','🪞','🪟','🛍️','🛒','🎁','🎈','🎏','🎀','🪄','🎊','🎉','🎎','🏮','🎐','🧧','✉️','📩','📨','📧','💌','📥','📤','📦','🏷️','📪','📫','📬','📭','📮','📯','📜','📃','📄','📑','🧾','📊','📈','📉','🗒️','🗓️','📆','📅','📇','🗃️','🗳️','🗄️','📋','📁','📂','🗂️','🗞️','📰','📓','📔','📒','📕','📗','📘','📙','📚','📖','🔖','🧷','🔗','📎','🖇️','📐','📏','🧮','📌','📍','✂️','🖊️','🖋️','✒️','🖌️','🖍️','📝','✏️','🔍','🔎','🔏','🔐','🔒','🔓'];
+function toggleEmoji(){
+  const p=$('emoji-panel');
+  if(p.style.display==='none'||!p.style.display){
+    p.style.display='grid';
+    if(!p.children.length)p.innerHTML=EMOJIS.map(e=>`<div class="emoji-item" onclick="insertEmoji('${e}')">${e}</div>`).join('');
+  }else p.style.display='none';
 }
-async function saveProfile(){
-  try{await api('PUT','/auth/profile',{nickname:$('#set-nick').value.trim(),signature:$('#set-sign').value.trim()});if($('#set-avatar').value)await api('PUT','/auth/avatar',{avatar:$('#set-avatar').value});S.user.nickname=$('#set-nick').value.trim();S.user.signature=$('#set-sign').value.trim();$('#sidebar-avatar').textContent=avT(S.user.nickname||S.user.username);alert('保存成功');}catch(e){alert('保存失败: '+e.message);}
-}
-async function adminLogin(){
-  try{const d=await api('POST','/admin/login',{password:$('#admin-pass').value});S.adminToken=d.access_token;const stats=await adminApi('GET','/admin/stats');const users=await adminApi('GET','/admin/users');$('#admin-panel').style.display='block';$('#admin-panel').innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">'+['用户','消息','群聊','在线'].map((l,i)=>'<div style="background:var(--bg);border-radius:10px;padding:14px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--accent)">'+[stats.users,stats.messages,stats.groups,stats.online][i]+'</div><div style="font-size:11px;color:var(--text-2)">'+l+'</div></div>').join('')+'</div>'+users.map(u=>'<div class="setting-item"><span>'+esc(u.nickname||u.username)+' (@'+esc(u.username)+')</span><button class="glass-btn danger" style="padding:5px 12px;font-size:11px" onclick="delUser('+u.id+')">删除</button></div>').join('');}catch(e){alert('密码错误');}
-}
-async function adminApi(m,p,b){const h={'Content-Type':'application/json','Authorization':'Bearer '+S.adminToken};const o={method:m,headers:h};if(b)o.body=JSON.stringify(b);const r=await fetch(API+'/api/v1'+p,o);return r.json();}
-async function delUser(id){if(!confirm('确定删除？'))return;try{await adminApi('DELETE','/admin/users/'+id);adminLogin();}catch(e){alert(e.message);}}
+function insertEmoji(e){const i=$('message-input');i.value+=e;i.focus();}
 
-/* ===== 群管理 ===== */
+// ========== 群管理 ==========
+async function loadGroupInfo(id){
+  try{
+    S.groupInfo=await apiGet('/conversations/'+id);
+    S.groupMembers=await apiGet('/conversations/'+id+'/members');
+    if(S.groupInfo.announcement){$('group-announcement').style.display='block';$('group-announcement').textContent='📢 '+S.groupInfo.announcement;}
+    renderGroupSidebar();
+  }catch(e){S.groupInfo=null;S.groupMembers=[];}
+}
+function renderGroupSidebar(){
+  if(!S.groupInfo)return;
+  const g=S.groupInfo;const myRole=getMyRole();
+  $('gs-content').innerHTML=`
+    <div class="kc-gs-section" style="text-align:center">
+      <div class="kc-gs-avatar">${esc(avatarText(g.title))}</div>
+      <div class="kc-gs-name">${esc(g.title)}</div>
+      <div class="kc-gs-id">群号: ${g.id} · ${S.groupMembers.length}人</div>
+    </div>
+    ${g.announcement?`<div class="kc-gs-section"><div style="font-size:12px;color:var(--kc-muted);margin-bottom:6px">群公告</div><div class="kc-gs-announcement">${esc(g.announcement)}</div></div>`:''}
+    <div class="kc-gs-section"><div style="font-size:12px;color:var(--kc-muted);margin-bottom:8px">群成员 (${S.groupMembers.length})</div>
+      ${S.groupMembers.map(m=>{const u=m.user||{};const name=u.nickname||u.username||'用户';return `<div class="kc-gs-member" onclick="showUserCard(${u.id})">
+        ${avatarHTML(name,32)}<div class="kc-gs-member-name">${esc(name)}</div>
+        ${m.role==='owner'?'<span class="kc-gs-role owner">群主</span>':m.role==='admin'?'<span class="kc-gs-role admin">管理员</span>':''}
+      </div>`;}).join('')}
+    </div>
+    <div class="kc-gs-section">
+      ${myRole==='owner'?`<button class="kc-gs-btn" onclick="editGroupName()">修改群名</button><button class="kc-gs-btn" onclick="editAnnouncement()">编辑公告</button><button class="kc-gs-btn danger" onclick="dissolveGroup()">解散群聊</button>`:''}
+      ${myRole==='admin'?`<button class="kc-gs-btn" onclick="editAnnouncement()">发布公告</button>`:''}
+      <button class="kc-gs-btn" onclick="leaveGroup()">退出群聊</button>
+    </div>`;
+}
+function getMyRole(){if(!S.groupMembers||!S.user)return'member';const m=S.groupMembers.find(x=>String(x.user_id)===String(S.user.id));return m?m.role:'member';}
 function showGroupMenu(e){
-  e.stopPropagation();
-  if(!S.conv||S.conv.type!=='group')return;
-  if(!S.groupInfo){loadGroupInfo(S.conv.id).then(()=>showGroupMenu(e));return;}
-  const g=S.groupInfo;
-  const isOwner=String(g.owner_id)===String(S.user.id);
-  const myRole=g.members.find(m=>String(m.id)===String(S.user.id))?.role||'member';
-  const canManage=isOwner||myRole==='admin';
-  let items='<div class="context-menu-item" onclick="loadGroupInfo('+g.id+');hidePopup()">群信息</div>';
-  if(canManage)items+='<div class="context-menu-item" onclick="editGroupName()">修改群名</div><div class="context-menu-item" onclick="editAnnouncement()">发布公告</div>';
-  if(isOwner)items+='<div class="context-menu-item" onclick="showGroupMembersManage()">成员管理</div><div class="context-menu-divider"></div><div class="context-menu-item danger" onclick="dissolveGroup()">解散群聊</div>';
-  else items+='<div class="context-menu-divider"></div><div class="context-menu-item danger" onclick="leaveGroup()">退出群聊</div>';
-  showPopup(e,items);
+  if(!S.groupInfo){loadGroupInfo(S.activeConv.id).then(()=>showGroupMenu(e));return;}
+  const role=getMyRole();
+  const items=[];
+  if(role==='owner'){items.push({t:'修改群名',fn:'editGroupName()'},{t:'编辑公告',fn:'editAnnouncement()'},{t:'解散群聊',fn:'dissolveGroup()',danger:true});}
+  else if(role==='admin'){items.push({t:'发布公告',fn:'editAnnouncement()'});}
+  items.push({t:'查看群信息',fn:"$('group-sidebar').style.display='flex'"});
+  items.push({t:'退出群聊',fn:'leaveGroup()',danger:true});
+  showPopupMenu(e,items);
 }
 async function editGroupName(){
   const name=prompt('输入新群名',S.groupInfo.title);if(!name)return;
-  try{await api('PUT','/conversations/'+S.groupInfo.id,{title:name});S.groupInfo.title=name;$('#chat-title').textContent=name;renderGroupSidebar();await loadConvs();renderConvList();}catch(e){alert(e.message);}
+  try{await apiPut('/conversations/'+S.activeConv.id,{title:name});await loadGroupInfo(S.activeConv.id);await loadConvs();$('chat-title').textContent=name;}catch(e){alert(e.message);}
 }
 async function editAnnouncement(){
-  const a=prompt('输入群公告',S.groupInfo.announcement||'');if(a===null)return;
-  try{await api('PUT','/conversations/'+S.groupInfo.id,{announcement:a});S.groupInfo.announcement=a;renderGroupSidebar();$('#group-announcement').style.display=a?'block':'none';$('#group-announcement').textContent='📢 '+a;}catch(e){alert(e.message);}
+  const a=prompt('输入公告内容',S.groupInfo.announcement||'');if(a===null)return;
+  try{await apiPut('/conversations/'+S.activeConv.id,{announcement:a});await loadGroupInfo(S.activeConv.id);}catch(e){alert(e.message);}
 }
-async function leaveGroup(){if(!confirm('确定退出群聊？'))return;try{await api('POST','/conversations/'+S.groupInfo.id+'/leave');S.conv=null;S.groupInfo=null;$('#group-sidebar').style.display='none';await loadConvs();renderConvList();$('#messages-container').innerHTML='<div class="empty-state"><div class="empty-icon">💬</div><p>选择一个会话开始聊天</p></div>';}catch(e){alert(e.message);}}
-async function dissolveGroup(){if(!confirm('确定解散群聊？此操作不可恢复！'))return;try{await api('DELETE','/conversations/'+S.groupInfo.id);S.conv=null;S.groupInfo=null;$('#group-sidebar').style.display='none';await loadConvs();renderConvList();$('#messages-container').innerHTML='<div class="empty-state"><div class="empty-icon">💬</div><p>选择一个会话开始聊天</p></div>';}catch(e){alert(e.message);}}
-function showGroupMembersManage(){
-  const g=S.groupInfo;if(!g)return;
-  const isOwner=String(g.owner_id)===String(S.user.id);
-  showModal('成员管理',g.members.map(m=>'<div class="setting-item"><div style="display:flex;align-items:center;gap:8px"><div class="avatar" style="width:28px;height:28px;font-size:11px;background:linear-gradient(135deg,'+avC(m.username)+','+avC(m.username+'x')+')">'+esc(avT(m.nickname||m.username))+'</div><span>'+esc(m.nickname||m.username)+'</span>'+(m.role==='owner'?'<span class="gs-role owner">群主</span>':m.role==='admin'?'<span class="gs-role admin">管理员</span>':'')+'</div><div>'+(isOwner&&m.role!=='owner'?'<button class="glass-btn" style="padding:4px 10px;font-size:11px" onclick="toggleAdmin('+m.id+',\''+(m.role==='admin'?'member':'admin')+'\')">'+(m.role==='admin'?'取消管理员':'设为管理员')+'</button> ':'')+(m.role!=='owner'?'<button class="glass-btn" style="padding:4px 10px;font-size:11px" onclick="muteUser('+m.id+')">禁言</button> <button class="glass-btn danger" style="padding:4px 10px;font-size:11px" onclick="kickUser('+m.id+')">踢除</button>':'')+'</div></div>').join(''),null);
+async function dissolveGroup(){
+  if(!confirm('确定解散该群聊？此操作不可恢复！'))return;
+  try{await apiDel('/conversations/'+S.activeConv.id);S.activeConv=null;S.groupInfo=null;$('group-sidebar').style.display='none';await loadConvs();switchNav('chat');}catch(e){alert(e.message);}
 }
-async function toggleAdmin(uid,role){try{await api('POST','/conversations/'+S.groupInfo.id+'/role',{user_id:uid,role});closeModal();await loadGroupInfo(S.groupInfo.id);showGroupMembersManage();}catch(e){alert(e.message);}}
-async function muteUser(uid){const m=prompt('禁言分钟数（0=解除）','10');if(m===null)return;try{await api('POST','/conversations/'+S.groupInfo.id+'/mute',{user_id:uid,duration_minutes:parseInt(m)||0});alert('操作成功');}catch(e){alert(e.message);}}
-async function kickUser(uid){if(!confirm('确定踢除该用户？'))return;try{await api('POST','/conversations/'+S.groupInfo.id+'/kick',{user_id:uid});closeModal();await loadGroupInfo(S.groupInfo.id);}catch(e){alert(e.message);}}
+async function leaveGroup(){
+  if(!confirm('确定退出该群聊？'))return;
+  try{await apiPost('/conversations/'+S.activeConv.id+'/leave');S.activeConv=null;S.groupInfo=null;$('group-sidebar').style.display='none';await loadConvs();switchNav('chat');}catch(e){alert(e.message);}
+}
 
-/* ===== 右键菜单 ===== */
-function showMemberContext(e,el){
-  const uid=el.getAttribute('onclick')?.match(/\d+/)?.[0];if(!uid)return;
-  const g=S.groupInfo;if(!g)return;
-  const member=g.members.find(m=>String(m.id)===uid);if(!member)return;
-  const isOwner=String(g.owner_id)===String(S.user.id);
-  const myRole=g.members.find(m=>String(m.id)===String(S.user.id))?.role||'member';
-  const canManage=isOwner||myRole==='admin';
-  let items='<div class="context-menu-item" onclick="showUserCard('+uid+');hideContextMenu()">查看资料</div>';
-  if(canManage&&member.role!=='owner'){
-    if(isOwner)items+='<div class="context-menu-item" onclick="toggleAdmin('+uid+',\''+(member.role==='admin'?'member':'admin')+'\');hideContextMenu()">'+(member.role==='admin'?'取消管理员':'设为管理员')+'</div>';
-    items+='<div class="context-menu-item" onclick="muteUser('+uid+');hideContextMenu()">禁言</div><div class="context-menu-item danger" onclick="kickUser('+uid+');hideContextMenu()">踢除</div>';
-  }
-  showContextMenu(e,items);
-}
-function showContextMenu(e,html){
-  const m=$('#context-menu');m.innerHTML=html;m.style.display='block';
-  m.style.left=Math.min(e.clientX,window.innerWidth-200)+'px';m.style.top=Math.min(e.clientY,window.innerHeight-300)+'px';
-}
-function hideContextMenu(){$('#context-menu').style.display='none';}
-function showPopup(e,html){
-  const m=$('#group-menu-popup');m.innerHTML=html;m.style.display='block';
-  const r=e.target.getBoundingClientRect();m.style.left=(r.right-200)+'px';m.style.top=(r.bottom+5)+'px';
-}
-function hidePopup(){$('#group-menu-popup').style.display='none';}
-
-/* ===== 用户名片 ===== */
+// ========== 用户名片 ==========
 async function showUserCard(uid){
   try{
-    const u=await api('GET','/users/'+uid+'/profile');
-    const c=$('#user-card-content');
-    c.innerHTML='<div class="uc-avatar" style="background:linear-gradient(135deg,'+avC(u.username)+','+avC(u.username+'x')+')">'+esc(u.avatar||avT(u.nickname||u.username))+'</div><div class="uc-name">'+esc(u.nickname||u.username)+'</div><div class="uc-username">@'+esc(u.username)+'</div><div class="uc-sign">'+esc(u.signature||'这个人很懒，什么都没写')+'</div><div class="uc-stats"><div><div class="uc-stat-num">'+(u.status==='online'?'在线':u.status==='away'?'离开':u.status==='busy'?'忙碌':'离线')+'</div><div class="uc-stat-label">状态</div></div><div><div class="uc-stat-num">ID:'+u.id+'</div><div class="uc-stat-label">用户ID</div></div></div><div class="uc-actions">'+(u.is_friend?'<button class="glass-btn primary" onclick="startChat('+uid+')">发消息</button>':'<button class="glass-btn primary" onclick="addFriend('+uid+')">加好友</button>')+'<button class="glass-btn" onclick="reportUser('+uid+')">举报</button><button class="glass-btn" onclick="hideUserCard()">关闭</button></div>';
-    $('#user-card').style.display='flex';
+    const users=await apiGet('/users/search?q='+uid);
+    const u=users.find(x=>String(x.id)===String(uid));
+    if(!u){alert('用户不存在');return;}
+    const isFriend=S.friends.some(f=>String(f.id)===String(uid));
+    $('user-card-content').innerHTML=`
+      <div class="uc-avatar" style="background:linear-gradient(135deg,${avatarColor(u.username)},${avatarColor(u.username+'x')})">${esc(avatarText(u.nickname||u.username))}</div>
+      <div class="uc-name">${esc(u.nickname||u.username)}</div>
+      <div class="uc-username">@${esc(u.username)} · ID: ${u.id}</div>
+      <div class="uc-sign">${esc(u.signature||'这个人很懒，什么都没写')}</div>
+      <div class="uc-stats"><div><div class="uc-stat-num">${u.id}</div><div class="uc-stat-label">ID</div></div></div>
+      <div class="uc-actions">
+        ${isFriend?'<button class="glass-btn primary" onclick="openDirect('+u.id+');closeUserCard()">发消息</button>':'<button class="glass-btn primary" onclick="addFriend('+u.id+');closeUserCard()">加好友</button>'}
+        <button class="glass-btn" onclick="reportUser(${u.id})">举报</button>
+      </div>`;
+    $('user-card').style.display='flex';
   }catch(e){alert('获取用户信息失败');}
 }
-function hideUserCard(){$('#user-card').style.display='none';}
-async function startChat(uid){try{const c=await api('POST','/conversations/direct',{user_id:uid});hideUserCard();switchNav('chat');await loadConvs();const conv=S.convs.find(x=>x.id===c.id);if(conv)openConv(conv);}catch(e){alert(e.message);}}
-async function addFriend(uid){try{await api('POST','/friends/requests',{receiver_id:uid});hideUserCard();alert('好友请求已发送');}catch(e){alert(e.message);}}
-async function reportUser(uid){const reason=prompt('举报原因','');if(reason===null)return;try{await api('POST','/reports',{target_user_id:uid,reason});hideUserCard();alert('举报已提交，管理员会处理');}catch(e){alert(e.message);}}
+function closeUserCard(){$('user-card').style.display='none';}
+$('user-card').addEventListener('click',e=>{if(e.target.id==='user-card')closeUserCard();});
+async function addFriend(uid){try{await apiPost('/friends/requests',{receiver_id:uid});alert('好友请求已发送');}catch(e){alert(e.message);}}
+async function reportUser(uid){const reason=prompt('请输入举报原因');if(!reason)return;try{await apiPost('/reports',{target_user_id:uid,reason});alert('举报已提交，感谢反馈');}catch(e){alert(e.message);}}
 
-/* ===== 弹窗 ===== */
-function showModal(title,body,onOk){$('#modal-title').textContent=title;$('#modal-body').innerHTML=body;$('#modal').style.display='flex';$('#modal-ok').onclick=async()=>{if(onOk){const r=await onOk();if(r!==false)closeModal();}else closeModal();};}
-function closeModal(){$('#modal').style.display='none';}
-function showNewChat(){
-  showModal('发起聊天','<div style="margin-bottom:12px"><div style="font-size:12px;color:var(--text-2);margin-bottom:6px">创建群聊</div><input id="m-gname" class="glass-input" placeholder="群聊名称"></div><div><div style="font-size:12px;color:var(--text-2);margin-bottom:6px">加入群聊</div><input id="m-gid" class="glass-input" placeholder="群聊ID"></div>',async()=>{
-    const name=$('#m-gname').value.trim(),gid=$('#m-gid').value.trim();
-    try{if(name){const g=await api('POST','/conversations/groups',{title:name,member_ids:[]});await loadConvs();const c=S.convs.find(x=>x.id===g.id);if(c)openConv(c);}else if(gid){await api('POST','/conversations/'+gid+'/join');await loadConvs();alert('已加入群聊');}}catch(e){alert(e.message);return false;}
-  });
+// ========== 添加按钮 ==========
+function handleListAdd(){
+  if(S.currentNav==='chat'||S.currentNav==='contacts')showAddFriendModal();
+  else if(S.currentNav==='bots')showCreateBotModal();
 }
-function showAddFriend(){
-  showModal('添加好友','<input id="m-search" class="glass-input" placeholder="输入用户名或昵称搜索"><div id="m-results" style="max-height:240px;overflow-y:auto;margin-top:10px"></div>',null);
-  $('#m-search').oninput=async e=>{
-    const q=e.target.value.trim(),box=$('#m-results');if(!q){box.innerHTML='';return;}
-    try{const users=await api('GET','/users/search?q='+encodeURIComponent(q));box.innerHTML=users.map(u=>'<div class="setting-item" onclick="sendFriendReq('+u.id+')"><div style="display:flex;align-items:center;gap:10px"><div class="avatar" style="width:32px;height:32px;font-size:12px;background:linear-gradient(135deg,'+avC(u.username)+','+avC(u.username+'x')+')">'+esc(avT(u.nickname||u.username))+'</div><div><div style="font-size:13px;font-weight:600">'+esc(u.nickname||u.username)+'</div><div style="font-size:11px;color:var(--text-2)">@'+esc(u.username)+'</div></div></div><button class="glass-btn primary" style="padding:5px 12px;font-size:11px">添加</button></div>').join('');}catch(err){box.innerHTML='<div style="padding:10px;color:var(--text-2);font-size:12px">未找到用户</div>';}
+function showAddFriendModal(){
+  showModal('添加好友','<input id="m-search" class="glass-input" placeholder="输入用户名搜索" style="margin-bottom:10px"><div id="m-results" style="max-height:200px;overflow-y:auto"></div>',async()=>{return true;});
+  $('m-search').oninput=async e=>{
+    const q=e.target.value.trim();const box=$('m-results');if(!q){box.innerHTML='';return;}
+    try{const users=await apiGet('/users/search?q='+encodeURIComponent(q));
+      box.innerHTML=users.map(u=>`<div class="kc-list-item" onclick="addFriend(${u.id});closeModal()"><div class="avatar" style="width:32px;height:32px;font-size:12px">${esc(avatarText(u.nickname||u.username))}</div><div style="flex:1"><div style="font-size:13px;font-weight:600">${esc(u.nickname||u.username)}</div><div style="font-size:11px;color:var(--kc-muted)">@${esc(u.username)}</div></div></div>`).join('');
+    }catch(err){box.innerHTML='<div style="padding:10px;color:var(--kc-muted);font-size:12px">未找到用户</div>';}
   };
 }
-async function sendFriendReq(id){try{await api('POST','/friends/requests',{receiver_id:id});closeModal();alert('好友请求已发送');}catch(e){alert(e.message);}}
-function showCreateBot(){
-  showModal('创建机器人','<input id="m-bname" class="glass-input" placeholder="机器人名称"><input id="m-bdesc" class="glass-input" placeholder="描述（可选）">',async()=>{
-    const name=$('#m-bname').value.trim(),desc=$('#m-bdesc').value.trim();if(!name){alert('请输入名称');return false;}
-    try{await api('POST','/bots',{name,description:desc,is_public:false});await loadBots();}catch(e){alert(e.message);return false;}
+function showCreateGroupModal(){
+  showModal('创建群聊','<input id="m-gname" class="glass-input" placeholder="群聊名称">',async()=>{
+    const name=$('m-gname').value.trim();if(!name){alert('请输入群名');return false;}
+    try{const g=await apiPost('/conversations/groups',{title:name,member_ids:[]});await loadConvs();openConv(g.id);switchNav('chat');}catch(e){alert(e.message);return false;}
   });
 }
-function showPostMoment(){
-  showModal('发布动态','<textarea id="m-moment" class="glass-input" placeholder="说点什么..." style="height:100px;resize:none"></textarea>',async()=>{
-    const c=$('#m-moment').value.trim();if(!c){alert('请输入内容');return false;}
-    S.moments.unshift({author:S.user.nickname||S.user.username,content:c,time:new Date().toISOString()});renderMoments();
-  });
-}
-
-/* ===== 表情 ===== */
-function renderEmojis(){
-  const box=$('#emoji-panel');
-  EMOJIS.slice(0,140).forEach(e=>{
-    const el=document.createElement('div');el.className='emoji-item';el.textContent=e;
-    el.onclick=()=>{$('#message-input').value+=e;$('#emoji-panel').style.display='none';$('#message-input').focus();};
-    box.appendChild(el);
+function showCreateBotModal(){
+  showModal('创建机器人','<input id="m-bname" class="glass-input" placeholder="机器人名称" style="margin-bottom:10px"><input id="m-bdesc" class="glass-input" placeholder="描述（可选）">',async()=>{
+    const name=$('m-bname').value.trim();const desc=$('m-bdesc').value.trim();if(!name){alert('请输入名称');return false;}
+    try{await apiPost('/bots',{name,description:desc,is_public:false});await loadBots();}catch(e){alert(e.message);return false;}
   });
 }
 
-/* ===== 主题 ===== */
-function toggleTheme(){
-  const c=document.documentElement.getAttribute('data-theme');
-  const n=c==='dark'?'light':'dark';
-  document.documentElement.setAttribute('data-theme',n);
-  localStorage.setItem('jj_theme',n);
+// ========== 机器人 ==========
+function renderBotsPage(){
+  const box=$('bots-content');if(!box)return;
+  const total=S.bots.length,online=S.bots.filter(b=>b.is_online).length;
+  $('bot-stats').innerHTML=`
+    <div class="bot-stat-card"><div class="bot-stat-num">${total}</div><div class="bot-stat-label">机器人总数</div></div>
+    <div class="bot-stat-card"><div class="bot-stat-num">${online}</div><div class="bot-stat-label">在线</div></div>
+    <div class="bot-stat-card"><div class="bot-stat-num">${total-online}</div><div class="bot-stat-label">离线</div></div>
+    <div class="bot-stat-card"><div class="bot-stat-num">${S.convs.length}</div><div class="bot-stat-label">会话数</div></div>`;
+  if(!S.bots.length){box.innerHTML='<div class="empty-state" style="padding:60px"><div class="empty-icon">🤖</div><p>还没有机器人，点右上角+创建</p></div>';return;}
+  box.innerHTML=S.bots.map(b=>`<div class="bot-card" onclick="showBotDetail(${b.id})">
+    <div class="bot-card-header"><div class="bot-card-avatar">B</div><div><div class="bot-card-name">${esc(b.name)}</div><span class="badge ${b.is_online?'online':'offline'}">${b.is_online?'在线':'离线'}</span></div></div>
+    <div class="bot-card-desc">${esc(b.description||'暂无描述')}</div>
+    <div class="bot-card-footer"><span style="font-size:11px;color:var(--kc-muted)">ID: ${b.id}</span><span style="font-size:11px;color:var(--kc-accent);font-weight:600">查看详情 →</span></div>
+  </div>`).join('');
+}
+async function showBotDetail(bid){
+  const b=S.bots.find(x=>x.id===bid);if(!b)return;
+  const groups=S.convs.filter(c=>c.type==='group');
+  showModal('机器人: '+b.name,`
+    <div style="text-align:center;margin-bottom:16px"><div class="bot-card-avatar" style="margin:0 auto 10px;width:64px;height:64px;font-size:24px">B</div><div style="font-size:18px;font-weight:700">${esc(b.name)}</div><span class="badge ${b.is_online?'online':'offline'}">${b.is_online?'在线':'离线'}</span></div>
+    <div style="font-size:12px;color:var(--kc-muted);margin-bottom:6px">Bot Key（点击复制）:</div>
+    <div class="bot-key-box" onclick="navigator.clipboard.writeText('${b.bot_key}');this.textContent='已复制!'">${esc(b.bot_key)}</div>
+    <div style="font-size:12px;color:var(--kc-muted);margin:14px 0 6px">WebSocket:</div>
+    <div class="code-block">wss://junjuncaht-production.up.railway.app/bot/ws?key=${esc(b.bot_key)}</div>
+    <div style="font-size:12px;color:var(--kc-muted);margin:14px 0 6px">加入群聊:</div>
+    <select id="m-bot-group" class="glass-input" style="margin-bottom:8px"><option value="">选择群聊...</option>${groups.map(g=>`<option value="${g.id}">${esc(g.title)}</option>`).join('')}</select>
+    <button class="glass-btn primary" style="width:100%" onclick="botJoinGroup(${b.id})">加入群聊</button>
+  `,async()=>{return true;});
+}
+async function botJoinGroup(bid){
+  const gid=$('m-bot-group').value;if(!gid){alert('请选择群聊');return;}
+  try{await apiPost('/bots/'+bid+'/join/'+gid);alert('机器人已加入群聊');closeModal();}catch(e){alert(e.message);}
 }
 
-/* ===== WebSocket ===== */
+// ========== 其他页面 ==========
+function renderContacts(){$('contacts-content').innerHTML='<div class="empty-state"><div class="empty-icon">👥</div><p>在左侧列表选择好友开始聊天</p></div>';}
+function renderPosts(){
+  const box=$('space-container');
+  if(!S.posts.length){box.innerHTML='<div class="empty-state"><div class="empty-icon">📝</div><p>还没有动态，点右上角✏️发布第一条</p></div>';return;}
+  box.innerHTML=S.posts.map(p=>`<div class="moment-card"><div class="moment-header">${avatarHTML(p.author||'用户',36)}<div><div style="font-weight:600;font-size:14px">${esc(p.author||'用户')}</div><div style="font-size:11px;color:var(--kc-muted)">${fmtTime(p.time)}</div></div></div><div class="moment-content">${esc(p.content)}</div></div>`).join('');
+}
+$('btn-post-moment').onclick=()=>{const c=prompt('发布动态');if(c){S.posts.unshift({author:S.user.nickname||S.user.username,content:c,time:new Date().toISOString()});renderPosts();}};
+function renderHome(){$('home-content').innerHTML=`<div style="max-width:600px;margin:0 auto"><div class="card" style="margin-bottom:16px"><div class="card-header">${avatarHTML(S.user.nickname||S.user.username,48)}<div><div class="card-title">${esc(S.user.nickname||S.user.username)}</div><div style="font-size:12px;color:var(--kc-muted)">@${esc(S.user.username)} · ID: ${S.user.id}</div></div></div><div class="card-desc">${esc(S.user.signature||'这个人很懒，什么都没写')}</div></div><div class="bot-stats" style="grid-template-columns:repeat(3,1fr)"><div class="bot-stat-card"><div class="bot-stat-num">${S.convs.length}</div><div class="bot-stat-label">会话</div></div><div class="bot-stat-card"><div class="bot-stat-num">${S.friends.length}</div><div class="bot-stat-label">好友</div></div><div class="bot-stat-card"><div class="bot-stat-num">${S.bots.length}</div><div class="bot-stat-label">机器人</div></div></div></div>`;}
+function renderTeamup(){$('teamup-content').innerHTML='<div class="empty-state"><div class="empty-icon">🎮</div><p>组队中心开发中...</p></div>';}
+function renderTasks(){
+  const box=$('tasks-content');
+  if(!S.tasks.length){box.innerHTML='<div class="empty-state"><div class="empty-icon">✅</div><p>还没有任务，点右上角+添加</p></div>';return;}
+  box.innerHTML=S.tasks.map((t,i)=>`<div class="task-item"><div class="task-check ${t.done?'done':''}" onclick="toggleTask(${i})">${t.done?'✓':''}</div><div class="task-text ${t.done?'done':''}">${esc(t.text)}</div><button class="kc-icon-btn" onclick="delTask(${i})">×</button></div>`).join('');
+}
+$('btn-add-task').onclick=()=>{const t=prompt('添加任务');if(t){S.tasks.push({text:t,done:false});renderTasks();}};
+function toggleTask(i){S.tasks[i].done=!S.tasks[i].done;renderTasks();}
+function delTask(i){S.tasks.splice(i,1);renderTasks();}
+function renderFavorites(){$('favorites-content').innerHTML='<div class="empty-state"><div class="empty-icon">⭐</div><p>收藏功能开发中...</p></div>';}
+function renderSettings(){
+  $('settings-content').innerHTML=`
+    <div class="setting-section"><h3>账号</h3>
+      <div class="setting-item"><span>用户名</span><span style="color:var(--kc-muted)">${esc(S.user.username)}</span></div>
+      <div class="setting-item"><span>昵称</span><input class="glass-input" id="set-nick" value="${esc(S.user.nickname||'')}"></div>
+      <div class="setting-item"><span>个性签名</span><input class="glass-input" id="set-sign" value="${esc(S.user.signature||'')}"></div>
+      <div class="setting-item"><span>状态</span><select class="glass-input" id="set-status"><option value="online" ${S.user.status==='online'?'selected':''}>在线</option><option value="away" ${S.user.status==='away'?'selected':''}>离开</option><option value="busy" ${S.user.status==='busy'?'selected':''}>忙碌</option><option value="offline" ${S.user.status==='offline'?'selected':''}>隐身</option></select></div>
+      <div class="setting-item"><span></span><button class="glass-btn primary" onclick="saveProfile()">保存修改</button></div>
+    </div>
+    <div class="setting-section"><h3>外观</h3>
+      <div class="setting-item"><span>深色模式</span><button class="glass-btn" onclick="toggleTheme()">${S.theme==='dark'?'已开启':'已关闭'}</button></div>
+    </div>
+    <div class="setting-section"><h3>关于</h3>
+      <div class="setting-item"><span>版本</span><span style="color:var(--kc-muted)">v6.0</span></div>
+      <div class="setting-item"><span>管理员</span><input type="password" class="glass-input" id="admin-pass" placeholder="输入管理员密码" style="max-width:140px"><button class="glass-btn" onclick="enterAdmin()">进入</button></div>
+    </div>
+    <div class="setting-section"><h3>账号操作</h3>
+      <div class="setting-item"><span></span><button class="glass-btn danger" onclick="logout()">退出登录</button></div>
+    </div>`;
+}
+async function saveProfile(){
+  const nick=$('set-nick').value.trim(),sign=$('set-sign').value.trim(),status=$('set-status').value;
+  try{await apiPut('/auth/profile',{nickname:nick,signature:sign,status});S.user.nickname=nick;S.user.signature=sign;S.user.status=status;alert('保存成功');}catch(e){alert(e.message);}
+}
+function enterAdmin(){if($('admin-pass').value===ADMIN_PASS){alert('管理员模式已开启');}else alert('密码错误');}
+function showProfile(){switchNav('settings');}
+function showAnnouncement(){alert('暂无公告');}
+
+// ========== 弹窗 ==========
+let modalOkFn=null;
+function showModal(title,body,onOk){
+  $('modal-title').textContent=title;$('modal-body').innerHTML=body;$('modal').style.display='flex';modalOkFn=onOk;
+}
+function closeModal(){$('modal').style.display='none';modalOkFn=null;}
+$('modal-close').onclick=closeModal;
+$('modal-cancel').onclick=closeModal;
+$('modal-ok').onclick=async()=>{if(modalOkFn){const r=await modalOkFn();if(r!==false)closeModal();}else closeModal();};
+$('modal').addEventListener('click',e=>{if(e.target.id==='modal')closeModal();});
+function bindModal(){}
+
+// ========== 右键菜单 ==========
+function bindContextMenu(){
+  document.addEventListener('click',()=>{$('context-menu').style.display='none';$('group-menu-popup').style.display='none';});
+}
+function showContextMenu(e,items){
+  e.preventDefault();e.stopPropagation();
+  const m=$('context-menu');
+  m.innerHTML=items.map(it=>it.divider?'<div class="context-menu-divider"></div>':`<div class="context-menu-item ${it.danger?'danger':''}" onclick="${it.fn};$('context-menu').style.display='none'">${it.t}</div>`).join('');
+  m.style.left=e.clientX+'px';m.style.top=e.clientY+'px';m.style.display='block';
+}
+function showPopupMenu(e,items){
+  e.stopPropagation();
+  const m=$('group-menu-popup');
+  m.innerHTML=items.map(it=>`<div class="context-menu-item ${it.danger?'danger':''}" onclick="${it.fn};$('group-menu-popup').style.display='none'">${it.t}</div>`).join('');
+  const r=e.target.getBoundingClientRect();
+  m.style.left=(r.right-200)+'px';m.style.top=(r.bottom+6)+'px';m.style.display='block';
+}
+
+// ========== WebSocket ==========
 function connectWS(){
   if(!S.token)return;
-  if(S.ws&&(S.ws.readyState===WebSocket.OPEN||S.ws.readyState===WebSocket.CONNECTING))return;
-  try{S.ws=new WebSocket('wss://junjuncaht-production.up.railway.app/ws?token='+encodeURIComponent(S.token));}catch(e){scheduleReconnect();return;}
-  S.ws.onopen=()=>{S.wsRetry=0;};
-  S.ws.onmessage=e=>{
-    if(e.data==='pong')return;
-    try{
-      const d=JSON.parse(e.data);
-      if(d.type==='message.created'&&d.data){
-        handleIncomingMessage(d.data);
-      }
-    }catch(e){}
+  if(S.ws&&(S.ws.readyState===1||S.ws.readyState===0))return;
+  try{S.ws=new WebSocket(WS_BASE+'/ws?token='+encodeURIComponent(S.token));}catch(e){scheduleWSReconnect();return;}
+  S.ws.onopen=()=>{S.wsReconnect=0;};
+  S.ws.onmessage=evt=>{
+    if(evt.data==='pong')return;
+    try{const msg=JSON.parse(evt.data);if(msg.type==='message.created'&&msg.data){handleNewMsg(msg.data);}}catch(e){}
   };
-  S.ws.onclose=()=>scheduleReconnect();
+  S.ws.onclose=()=>{scheduleWSReconnect();};
   S.ws.onerror=()=>{if(S.ws)S.ws.close();};
 }
-function scheduleReconnect(){S.wsRetry++;setTimeout(connectWS,Math.min(1000*Math.pow(2,S.wsRetry-1),30000));}
-
-function handleIncomingMessage(m){
-  if(S.conv&&String(S.conv.id)===String(m.conversation_id)){
-    if(!S.messages[m.conversation_id])S.messages[m.conversation_id]=[];
-    if(!S.messages[m.conversation_id].find(x=>x.id===m.id)){
-      S.messages[m.conversation_id].push(m);
-      renderMsgs();
-    }
+function scheduleWSReconnect(){S.wsReconnect++;const delay=Math.min(1000*Math.pow(2,S.wsReconnect-1),30000);setTimeout(connectWS,delay);}
+function closeWS(){if(S.ws){try{S.ws.close();}catch(e){}S.ws=null;}}
+function handleNewMsg(d){
+  const cid=d.conversation_id;
+  if(S.activeConv&&String(S.activeConv.id)===String(cid)){
+    if(!S.msgCache[cid])S.msgCache[cid]=[];
+    S.msgCache[cid].push(d);renderMessages();
   }
-  loadConvs().then(()=>{renderConvList();if(S.nav==='contacts')renderContacts();});
+  loadConvs();
+  // 更新未读
+  const badge=$('unread-badge');
+  if(!S.activeConv||String(S.activeConv.id)!==String(cid)){
+    S.onlineCount=(S.onlineCount||0)+1;badge.textContent=S.onlineCount;badge.style.display='flex';
+  }
 }
-
-// 轮询兜底：每3秒检查一次会话列表更新
-function startPolling(){
-  if(S.pollTimer)return;
-  S.pollTimer=setInterval(async()=>{
-    if(!S.token)return;
-    try{
-      const oldTitles={};S.convs.forEach(c=>oldTitles[c.id]=c.last_message?.id||0);
-      await loadConvs();
-      // 检查是否有新消息
-      for(const c of S.convs){
-        const oldId=oldTitles[c.id]||0;
-        const newId=c.last_message?.id||0;
-        if(newId>oldId&&S.conv&&String(S.conv.id)===String(c.id)){
-          // 当前会话有新消息，重新加载
-          S.messages[c.id]=await api('GET','/conversations/'+c.id+'/messages?limit=50');
-          renderMsgs();
-        }
-      }
-      renderConvList();
-    }catch(e){}
-  },3000);
-}
+function startPolling(){stopPolling();S.pollTimer=setInterval(async()=>{try{const c=await apiGet('/conversations');if(JSON.stringify(c)!==JSON.stringify(S.convs)){S.convs=c;if(S.currentNav==='chat')renderList();if(S.activeConv){const nc=c.find(x=>x.id===S.activeConv.id);if(nc&&nc.last_message){const last=S.msgCache[S.activeConv.id];if(!last||!last.length||last[last.length-1].id!==nc.last_message.id){S.msgCache[S.activeConv.id]=await apiGet('/conversations/'+S.activeConv.id+'/messages?limit=50');renderMessages();}}}}}catch(e){}},3000);}
 function stopPolling(){if(S.pollTimer){clearInterval(S.pollTimer);S.pollTimer=null;}}
-
-init();
