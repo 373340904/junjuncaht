@@ -50,7 +50,7 @@ function bind(){
   $('#search-input').oninput=e=>renderConvList(e.target.value);
   $('#btn-add-chat').onclick=showNewChat;$('#btn-add-friend').onclick=showAddFriend;
   $('#btn-create-bot').onclick=showCreateBot;$('#btn-post-moment').onclick=showPostMoment;
-  $('#btn-group-menu').onclick=showGroupMenu;$('#btn-close-gs').onclick=()=>{$('#group-sidebar').style.display='none';};
+  $('#btn-group-menu').onclick=e=>showGroupMenu(e);$('#btn-close-gs').onclick=()=>{$('#group-sidebar').style.display='none';};
   $('#modal-close').onclick=closeModal;$('#modal-cancel').onclick=closeModal;
   document.addEventListener('click',e=>{if(!e.target.closest('.context-menu'))hideContextMenu();if(!e.target.closest('.popup-menu'))hidePopup();if(!e.target.closest('.user-card')&&!e.target.closest('.avatar')&&!e.target.closest('.gs-member')&&!e.target.closest('.member-item'))hideUserCard();});
   document.addEventListener('contextmenu',e=>{const m=e.target.closest('.gs-member,.member-item');if(m){e.preventDefault();showMemberContext(e,m);}});
