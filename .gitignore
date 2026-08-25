@@ -1,0 +1,30 @@
+# 数据库
+*.db
+*.sqlite
+*.sqlite3
+
+# 证书
+*.pem
+*.key
+*.crt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# 环境变量
+.env
+.env.local
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log

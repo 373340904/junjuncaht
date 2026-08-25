@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JunjunChat</title>
+<link rel="icon" href="logo.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<!-- 动态背景 -->
+<div class="bg-orbs">
+  <div class="orb orb1"></div>
+  <div class="orb orb2"></div>
+  <div class="orb orb3"></div>
+</div>
+
+<!-- 登录面板 -->
+<div id="login-panel" class="login-panel">
+  <div class="glass-card login-card">
+    <div class="login-logo">
+      <div class="logo-icon">
+        <img src="logo.png" alt="JunjunChat">
+      </div>
+      <h1 class="app-title">JunjunChat</h1>
+      <p class="app-subtitle">随时随地，你我都在</p>
+    </div>
+    <div id="login-form">
+      <input id="li-user" type="text" placeholder="用户名" class="glass-input">
+      <input id="li-pass" type="password" placeholder="密码" class="glass-input">
+      <button id="li-btn" class="glass-btn primary">登 录</button>
+      <div class="login-footer">
+        <span id="to-reg">没有账号？注册</span>
+      </div>
+    </div>
+    <div id="reg-form" style="display:none">
+      <input id="re-user" type="text" placeholder="用户名 (3-50位)" class="glass-input">
+      <input id="re-nick" type="text" placeholder="昵称 (可选)" class="glass-input">
+      <input id="re-pass" type="password" placeholder="密码 (至少6位)" class="glass-input">
+      <input id="re-pass2" type="password" placeholder="确认密码" class="glass-input">
+      <button id="re-btn" class="glass-btn primary">注 册</button>
+      <div class="login-footer"><span id="to-login">返回登录</span></div>
+    </div>
+    <div id="li-msg" class="error-msg"></div>
+  </div>
+</div>
+
+<!-- 主界面 -->
+<div id="main-app" style="display:none">
+  <!-- 左侧导航栏 -->
+  <div class="sidebar">
+    <div class="sidebar-avatar" id="sidebar-avatar" title="个人资料">?</div>
+    <div class="nav-item active" data-nav="chat" title="聊天">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    </div>
+    <div class="nav-item" data-nav="contacts" title="联系人">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    </div>
+    <div class="nav-item" data-nav="space" title="动态">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+    </div>
+    <div class="nav-item" data-nav="bots" title="机器人">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8.01" y2="16"/><line x1="16" y1="16" x2="16.01" y2="16"/></svg>
+    </div>
+    <div style="flex:1"></div>
+    <div class="nav-item" id="theme-toggle" title="切换主题">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </div>
+    <div class="nav-item" data-nav="settings" title="设置">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </div>
+  </div>
+
+  <!-- 聊天/列表面板 -->
+  <div class="list-panel" id="panel-chat">
+    <div class="panel-header">
+      <span class="panel-title">聊天</span>
+      <div class="panel-actions">
+        <button class="icon-btn" id="btn-add-chat" title="发起聊天">+</button>
+      </div>
+    </div>
+    <div class="tab-bar">
+      <div class="tab active" data-list="conversations">消息</div>
+      <div class="tab" data-list="friends">好友</div>
+      <div class="tab" data-list="groups">群聊</div>
+    </div>
+    <div class="search-box">
+      <input id="search-input" type="text" placeholder="搜索...">
+    </div>
+    <div class="list-container" id="chat-list"></div>
+  </div>
+
+  <!-- 联系人面板 -->
+  <div class="list-panel" id="panel-contacts" style="display:none">
+    <div class="panel-header">
+      <span class="panel-title">联系人</span>
+      <div class="panel-actions">
+        <button class="icon-btn" id="btn-add-friend" title="添加好友">+</button>
+      </div>
+    </div>
+    <div class="list-container" id="friends-list"></div>
+  </div>
+
+  <!-- 动态面板 -->
+  <div class="list-panel" id="panel-space" style="display:none">
+    <div class="panel-header"><span class="panel-title">动态</span></div>
+    <div class="space-container">
+      <div class="empty-state">
+        <div class="empty-icon">✨</div>
+        <p>动态功能开发中...</p>
+        <p class="empty-sub">敬请期待</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 机器人面板 -->
+  <div class="list-panel" id="panel-bots" style="display:none">
+    <div class="panel-header">
+      <span class="panel-title">机器人</span>
+      <div class="panel-actions">
+        <button class="icon-btn" id="btn-create-bot" title="创建机器人">+</button>
+      </div>
+    </div>
+    <div class="list-container" id="bots-list"></div>
+  </div>
+
+  <!-- 设置面板 -->
+  <div class="list-panel" id="panel-settings" style="display:none">
+    <div class="panel-header"><span class="panel-title">设置</span></div>
+    <div class="settings-container">
+      <div class="setting-section">
+        <h3>个人设置</h3>
+        <div class="setting-item">
+          <span>当前状态</span>
+          <select id="status-select" class="glass-input">
+            <option value="online">在线</option>
+            <option value="away">离开</option>
+            <option value="busy">忙碌</option>
+            <option value="offline">隐身</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <span>主题模式</span>
+          <button id="theme-btn" class="glass-btn">切换深浅色</button>
+        </div>
+      </div>
+      <div class="setting-section">
+        <h3>管理员</h3>
+        <div class="setting-item">
+          <input id="admin-pass" type="password" placeholder="管理员密码" class="glass-input">
+          <button id="admin-login" class="glass-btn">进入管理后台</button>
+        </div>
+        <div id="admin-panel" style="display:none">
+          <div class="admin-stats" id="admin-stats"></div>
+          <div class="admin-users" id="admin-users"></div>
+        </div>
+      </div>
+      <div class="setting-section">
+        <h3>关于</h3>
+        <p class="about-text">JunjunChat v2.0</p>
+        <p class="about-text">独立聊天平台 · 液态玻璃设计</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 聊天主区域 -->
+  <div class="chat-area" id="chat-area">
+    <div class="chat-header">
+      <span id="chat-title">选择一个会话开始聊天</span>
+      <div class="chat-actions">
+        <button class="icon-btn" id="btn-group-info" title="群信息" style="display:none">i</button>
+      </div>
+    </div>
+    <div class="messages-container" id="messages-container">
+      <div class="empty-state">
+        <div class="empty-icon">💬</div>
+        <p>选择一个会话开始聊天</p>
+      </div>
+    </div>
+    <div class="input-area">
+      <div class="emoji-panel" id="emoji-panel" style="display:none"></div>
+      <div class="input-toolbar">
+        <button class="icon-btn" id="btn-emoji" title="表情">😊</button>
+      </div>
+      <div class="input-wrapper">
+        <textarea id="message-input" placeholder="输入消息，Enter发送，Shift+Enter换行..."></textarea>
+        <button id="btn-send" class="send-btn">发送</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 机器人详情面板（右侧） -->
+  <div class="bot-detail-panel" id="bot-detail-panel" style="display:none">
+    <div class="bot-detail-header">
+      <span id="bot-detail-name">机器人</span>
+      <button class="icon-btn" id="btn-close-bot-detail">×</button>
+    </div>
+    <div class="bot-detail-content" id="bot-detail-content"></div>
+  </div>
+</div>
+
+<!-- 弹窗 -->
+<div id="modal" class="modal" style="display:none">
+  <div class="modal-content glass-card">
+    <div class="modal-header">
+      <span id="modal-title">标题</span>
+      <button class="icon-btn" id="modal-close">×</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-footer">
+      <button class="glass-btn" id="modal-cancel">取消</button>
+      <button class="glass-btn primary" id="modal-ok">确定</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>

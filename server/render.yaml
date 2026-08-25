@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: junjunchat-server
+    runtime: docker
+    region: singapore
+    plan: free
+    dockerfilePath: ./Dockerfile
+    port: 8000
+    healthCheckPath: /health
+    healthCheckInterval: 30
+    numInstances: 1
+    envVars:
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        value: sqlite+aiosqlite:////app/data/junjunchat.db
+    disk:
+      name: junjunchat-data
+      mountPath: /app/data
+      sizeGB: 1
