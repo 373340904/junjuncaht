@@ -1,7 +1,7 @@
 // ========== JunjunChat 前端 v2.0 ==========
 const CONFIG = {
-  API_BASE: 'https://localhost:8000/api/v1',
-  WS_BASE: 'wss://localhost:8000'
+  API_BASE: 'https://junjuncaht-production.up.railway.app/api/v1',
+  WS_BASE: 'wss://junjuncaht-production.up.railway.app'
 };
 
 let token = localStorage.getItem('jj_token') || null;

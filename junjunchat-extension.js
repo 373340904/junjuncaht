@@ -10,9 +10,9 @@
 (function (global) {
   'use strict';
 
-  // ========== 配置（本地HTTPS，自签名证书，需在浏览器信任一次）==========
-  const API_BASE = 'https://localhost:8000/api/v1';
-  const WS_BASE = 'wss://localhost:8000';
+  // ========== 配置（Railway 公网部署）==========
+  const API_BASE = 'https://junjuncaht-production.up.railway.app/api/v1';
+  const WS_BASE = 'wss://junjuncaht-production.up.railway.app';
   const EXT_ID = 'junjunchat';
   const WIN_W = 880, WIN_H = 600;
   const HEARTBEAT_MS = 25000;
