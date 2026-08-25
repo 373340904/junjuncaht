@@ -34,8 +34,8 @@ async function init(){
   const th=localStorage.getItem('jj_theme')||'light';
   document.documentElement.setAttribute('data-theme',th);
   renderEmojis();bind();
-  if(S.token){try{S.user=await api('GET','/auth/me');showMain();loadAll();connectWS();}catch(e){S.token=null;localStorage.removeItem('jj_token');showLogin();}}
-  else showLogin();
+  // 不自动登录，显示登录页
+  showLogin();
 }
 
 function bind(){
@@ -61,15 +61,16 @@ function showLogin(){$('#login-panel').style.display='flex';$('#main-app').style
 function showMain(){$('#login-panel').style.display='none';$('#main-app').style.display='flex';$('#sidebar-avatar').textContent=avT(S.user.nickname||S.user.username);$('#sidebar-avatar').style.background='linear-gradient(135deg,'+avC(S.user.username)+','+avC(S.user.username+'x')+')';}
 async function doLogin(){
   const u=$('#li-user').value.trim(),p=$('#li-pass').value;
+  const remember=$('#li-remember').checked;
   if(!u||!p){$('#li-msg').textContent='请输入用户名和密码';return;}
   $('#li-msg').textContent='';
   try{
-    // 先清除旧状态
     if(S.ws){try{S.ws.close();}catch(e){}}
     S={...S,token:null,user:null,conv:null,convs:[],friends:[],requests:[],bots:[],messages:{},ws:null,groupInfo:null};
     localStorage.removeItem('jj_token');
-    const d=await api('POST','/auth/login',{username_or_email:u,password:p,remember_me:true});
-    S.token=d.access_token;S.user=d.user;localStorage.setItem('jj_token',d.access_token);
+    const d=await api('POST','/auth/login',{username_or_email:u,password:p,remember_me:remember});
+    S.token=d.access_token;S.user=d.user;
+    if(remember)localStorage.setItem('jj_token',d.access_token);
     showMain();loadAll();connectWS();
   }catch(e){$('#li-msg').textContent=e.message;}
 }
@@ -80,12 +81,12 @@ async function doRegister(){
   if(p.length<6){$('#li-msg').textContent='密码至少6位';return;}
   $('#li-msg').textContent='';
   try{
-    // 先清除旧状态
     if(S.ws){try{S.ws.close();}catch(e){}}
     S={...S,token:null,user:null,conv:null,convs:[],friends:[],requests:[],bots:[],messages:{},ws:null,groupInfo:null};
     localStorage.removeItem('jj_token');
     const d=await api('POST','/auth/register',{username:u,password:p,nickname:n});
-    S.token=d.access_token;S.user=d.user;localStorage.setItem('jj_token',d.access_token);
+    S.token=d.access_token;S.user=d.user;
+    // 注册后不自动保存 token，下次需要手动登录
     showMain();loadAll();connectWS();
   }catch(e){$('#li-msg').textContent=e.message;}
 }
