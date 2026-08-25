@@ -12,7 +12,7 @@
 
 <!-- 登录 -->
 <div id="login-panel" class="login-panel">
-  <div class="glass-card login-card">
+  <div class="login-card">
     <div class="login-logo">
       <div class="logo-icon"><img src="logo.png" alt=""></div>
       <h1 class="app-title">JunjunChat</h1>
@@ -21,11 +21,8 @@
     <div id="login-form">
       <input id="li-user" type="text" placeholder="用户名" class="glass-input">
       <input id="li-pass" type="password" placeholder="密码" class="glass-input">
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-2);cursor:pointer;margin:2px 0 10px">
-        <input type="checkbox" id="li-remember" style="width:14px;height:14px;cursor:pointer">
-        下次自动登录
-      </label>
-      <button id="li-btn" class="glass-btn primary">登 录</button>
+      <label class="remember-label"><input type="checkbox" id="li-remember"> 下次自动登录</label>
+      <button id="li-btn" class="primary-btn">登 录</button>
       <div class="login-footer"><span id="to-reg">注册账号</span></div>
     </div>
     <div id="reg-form" style="display:none">
@@ -33,11 +30,10 @@
       <input id="re-nick" type="text" placeholder="昵称（可选）" class="glass-input">
       <input id="re-pass" type="password" placeholder="密码（至少6位）" class="glass-input">
       <input id="re-pass2" type="password" placeholder="确认密码" class="glass-input">
-      <button id="re-btn" class="glass-btn primary">注 册</button>
+      <button id="re-btn" class="primary-btn">注 册</button>
       <div class="login-footer"><span id="to-login">返回登录</span></div>
     </div>
     <div id="li-msg" class="error-msg"></div>
-    <div style="text-align:center;margin-top:8px"><span style="font-size:11px;color:var(--text-3);cursor:pointer;text-decoration:underline" onclick="localStorage.clear();location.reload()">清除本地缓存</span></div>
   </div>
 </div>
 
@@ -45,9 +41,9 @@
 <div id="main-app" style="display:none">
   <!-- 左侧导航 -->
   <div class="sidebar">
-    <div class="sidebar-avatar" id="sidebar-avatar">?</div>
+    <div class="sidebar-avatar" id="sidebar-avatar" title="个人资料">?</div>
     <div class="nav-item active" data-nav="chat" title="消息"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
-    <div class="nav-item" data-nav="contacts" title="联系人"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+    <div class="nav-item" data-nav="contacts" title="联系人"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
     <div class="nav-item" data-nav="space" title="动态"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
     <div class="nav-item" data-nav="bots" title="机器人"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8.01" y2="16"/><line x1="16" y1="16" x2="16.01" y2="16"/></svg></div>
     <div style="flex:1"></div>
@@ -69,7 +65,7 @@
       </div>
       <div class="chat-area" id="chat-area">
         <div class="chat-header">
-          <div style="display:flex;align-items:center;gap:10px;cursor:pointer" id="chat-title-area">
+          <div style="display:flex;align-items:center;gap:10px" id="chat-title-area">
             <span id="chat-title">选择会话</span>
           </div>
           <button class="icon-btn" id="btn-group-menu" title="更多" style="display:none">⋯</button>
@@ -84,25 +80,30 @@
             <button class="icon-btn" id="btn-emoji" title="表情">😊</button>
           </div>
           <div class="input-wrapper">
-            <textarea id="message-input" placeholder="输入消息，Enter发送"></textarea>
+            <textarea id="message-input" placeholder="输入消息，Enter发送，支持Markdown"></textarea>
             <button id="btn-send" class="send-btn">发送</button>
           </div>
         </div>
       </div>
-      <!-- 群信息侧边栏 -->
       <div class="group-sidebar" id="group-sidebar" style="display:none">
-        <div class="gs-header">
-          <span>群信息</span>
-          <button class="icon-btn" id="btn-close-gs">×</button>
-        </div>
+        <div class="gs-header"><span>群信息</span><button class="icon-btn" id="btn-close-gs">×</button></div>
         <div class="gs-content" id="gs-content"></div>
       </div>
     </div>
 
-    <!-- 联系人页 -->
+    <!-- 联系人页 - KukeChat风格左右布局 -->
     <div class="page-layout" id="layout-contacts" style="display:none">
-      <div class="page-header"><span class="panel-title">联系人</span><button class="icon-btn" id="btn-add-friend">+</button></div>
-      <div class="page-content-wide" id="contacts-content"></div>
+      <div class="contacts-layout">
+        <div class="contacts-left">
+          <div class="panel-header"><span class="panel-title">联系人</span><button class="icon-btn" id="btn-add-friend">+</button></div>
+          <div class="search-box"><input id="contact-search" type="text" placeholder="搜索好友"></div>
+          <div class="list-container" id="friend-list"></div>
+        </div>
+        <div class="contacts-right">
+          <div class="panel-header"><span class="panel-title">通知中心</span></div>
+          <div class="notif-container" id="notif-container"></div>
+        </div>
+      </div>
     </div>
 
     <!-- 动态页 -->
@@ -111,10 +112,13 @@
       <div class="page-content-wide" id="space-container"></div>
     </div>
 
-    <!-- 机器人页 -->
+    <!-- 机器人页 - KukeChat风格网格 -->
     <div class="page-layout" id="layout-bots" style="display:none">
-      <div class="page-header"><span class="panel-title">机器人</span><button class="icon-btn" id="btn-create-bot">+</button></div>
-      <div class="page-content-wide" id="bots-content"></div>
+      <div class="page-header"><span class="panel-title">机器人广场</span><button class="icon-btn" id="btn-create-bot">+</button></div>
+      <div class="page-content-wide">
+        <div class="bot-stats" id="bot-stats"></div>
+        <div class="bot-grid" id="bots-content"></div>
+      </div>
     </div>
 
     <!-- 设置页 -->
@@ -127,15 +131,10 @@
 
 <!-- 右键菜单 -->
 <div id="context-menu" class="context-menu" style="display:none"></div>
-
 <!-- 用户名片 -->
-<div id="user-card" class="user-card-modal" style="display:none">
-  <div class="user-card glass-card" id="user-card-content"></div>
-</div>
-
+<div id="user-card" class="user-card-modal" style="display:none"><div class="user-card glass-card" id="user-card-content"></div></div>
 <!-- 群菜单弹窗 -->
 <div id="group-menu-popup" class="popup-menu" style="display:none"></div>
-
 <!-- 通用弹窗 -->
 <div id="modal" class="modal" style="display:none">
   <div class="modal-content glass-card">

@@ -49,6 +49,7 @@ function bind(){
   $('#btn-send').onclick=sendMsg;$('#message-input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg();}};
   $('#btn-emoji').onclick=()=>{$('#emoji-panel').style.display=$('#emoji-panel').style.display==='none'?'grid':'none';};
   $('#search-input').oninput=e=>renderConvList(e.target.value);
+  $('#contact-search').oninput=e=>renderFriendList(e.target.value);
   $('#btn-add-chat').onclick=showNewChat;$('#btn-add-friend').onclick=showAddFriend;
   $('#btn-create-bot').onclick=showCreateBot;$('#btn-post-moment').onclick=showPostMoment;
   $('#btn-group-menu').onclick=e=>showGroupMenu(e);$('#btn-close-gs').onclick=()=>{$('#group-sidebar').style.display='none';};
@@ -188,38 +189,52 @@ async function sendMsg(){
 
 /* ===== 联系人 ===== */
 function renderContacts(){
-  const box=$('#contacts-content');box.innerHTML='';
-  // 好友请求
-  if(S.requests.length){
-    box.innerHTML+='<div style="margin-bottom:20px"><h3 style="font-size:13px;color:var(--text-2);margin-bottom:10px;font-weight:600">好友请求 ('+S.requests.length+')</h3>'+S.requests.map(r=>{const s=r.sender||{};return '<div class="notif-card"><div class="avatar" style="width:36px;height:36px;font-size:13px;background:linear-gradient(135deg,'+avC(s.username)+','+avC(s.username+'x')+')">'+esc(avT(s.nickname||s.username))+'</div><div style="flex:1"><div style="font-size:14px;font-weight:600">'+esc(s.nickname||s.username)+' 请求添加好友</div><div style="font-size:11px;color:var(--text-2);margin-top:2px">'+fmt(r.created_at)+'</div></div><div class="notif-actions"><button class="glass-btn primary" style="padding:6px 14px;font-size:12px" onclick="acceptReq('+r.id+')">接受</button><button class="glass-btn" style="padding:6px 14px;font-size:12px" onclick="rejectReq('+r.id+')">拒绝</button></div></div>';}).join('')+'</div>';
-  }
-  // 好友列表
-  box.innerHTML+='<h3 style="font-size:13px;color:var(--text-2);margin-bottom:10px;font-weight:600">我的好友 ('+(S.friends||[]).length+')</h3>';
-  if(!S.friends.length){box.innerHTML+='<div class="empty-state" style="padding:30px"><div class="empty-icon">👥</div><p>暂无好友</p></div>';return;}
-  const grid=document.createElement('div');grid.className='card-grid';
-  S.friends.forEach((f,i)=>{
-    const c=document.createElement('div');c.className='card';c.style.animationDelay=(i*0.03)+'s';
-    c.innerHTML='<div class="card-header"><div class="avatar" style="background:linear-gradient(135deg,'+avC(f.username)+','+avC(f.username+'x')+')">'+esc(avT(f.nickname||f.username))+'</div><div><div class="card-title">'+esc(f.nickname||f.username)+'</div><div style="font-size:11px;color:var(--text-2)">@'+esc(f.username)+'</div></div><div class="status-dot '+(f.status||'offline')+'"></div></div><div class="card-desc">'+esc(f.signature||'这个人很懒，什么都没写')+'</div><div class="card-footer"><span style="font-size:11px;color:var(--text-2)">'+(f.status==='online'?'在线':f.status==='away'?'离开':f.status==='busy'?'忙碌':'离线')+'</span><button class="glass-btn primary" style="padding:6px 14px;font-size:12px">发消息</button></div>';
-    c.querySelector('.glass-btn').onclick=()=>openConv(f);c.onclick=()=>openConv(f);
-    grid.appendChild(c);
+  renderFriendList();
+  renderNotifications();
+}
+function renderFriendList(filter){
+  const box=$('#friend-list');if(!box)return;box.innerHTML='';
+  let list=S.friends||[];
+  if(filter)list=list.filter(f=>(f.nickname||f.username||'').toLowerCase().includes(filter.toLowerCase()));
+  if(!list.length){box.innerHTML='<div class="empty-state" style="padding:30px"><div class="empty-icon">👥</div><p>暂无好友</p></div>';return;}
+  list.forEach((f,i)=>{
+    const item=document.createElement('div');item.className='list-item';item.style.animationDelay=(i*0.02)+'s';
+    item.innerHTML='<div class="avatar" style="background:linear-gradient(135deg,'+avC(f.username)+','+avC(f.username+'x')+')">'+esc(avT(f.nickname||f.username))+'</div><div class="list-item-info"><div class="list-item-name">'+esc(f.nickname||f.username)+'</div><div class="list-item-msg">@'+esc(f.username)+'</div></div><div class="status-dot '+(f.status||'offline')+'"></div>';
+    item.onclick=()=>openConv(f);box.appendChild(item);
   });
-  box.appendChild(grid);
+}
+function renderNotifications(){
+  const box=$('#notif-container');if(!box)return;box.innerHTML='';
+  if(S.requests.length){
+    box.innerHTML='<h3 style="font-size:13px;color:var(--text-2);margin-bottom:12px;font-weight:600">好友请求 ('+S.requests.length+')</h3>'+S.requests.map(r=>{const s=r.sender||{};return '<div class="notif-card"><div class="avatar" style="width:36px;height:36px;font-size:13px;background:linear-gradient(135deg,'+avC(s.username)+','+avC(s.username+'x')+')">'+esc(avT(s.nickname||s.username))+'</div><div style="flex:1"><div style="font-size:14px;font-weight:600">'+esc(s.nickname||s.username)+' 请求添加好友</div><div style="font-size:11px;color:var(--text-2);margin-top:2px">'+fmt(r.created_at)+'</div></div><div class="notif-actions"><button class="glass-btn primary" style="padding:6px 14px;font-size:12px" onclick="acceptReq('+r.id+')">接受</button><button class="glass-btn" style="padding:6px 14px;font-size:12px" onclick="rejectReq('+r.id+')">拒绝</button></div></div>';}).join('');
+  }else{
+    box.innerHTML='<div class="empty-state" style="padding:60px"><div class="empty-icon">🔔</div><p>暂无通知</p></div>';
+  }
 }
 async function acceptReq(id){try{await api('POST','/friends/requests/'+id+'/accept');await loadAll();renderContacts();}catch(e){alert(e.message);}}
 async function rejectReq(id){try{await api('POST','/friends/requests/'+id+'/reject');await loadAll();renderContacts();}catch(e){alert(e.message);}}
 
 /* ===== 机器人 ===== */
 function renderBots(){
+  const bots=S.bots||[];
+  const online=bots.filter(b=>b.is_online).length;
+  // 统计卡片
+  $('#bot-stats').innerHTML=[
+    {num:bots.length,label:'机器人总数'},
+    {num:online,label:'在线'},
+    {num:bots.length-online,label:'离线'},
+    {num:S.convs.filter(c=>c.type==='group').length,label:'群聊数'}
+  ].map((s,i)=>'<div class="bot-stat-card" style="animation-delay:'+(i*0.05)+'s"><div class="bot-stat-num">'+s.num+'</div><div class="bot-stat-label">'+s.label+'</div></div>').join('');
+  // 网格
   const box=$('#bots-content');box.innerHTML='';
-  if(!S.bots.length){box.innerHTML='<div class="empty-state" style="padding:60px"><div class="empty-icon">🤖</div><p>暂无机器人</p><p style="font-size:12px;margin-top:4px">点右上角+创建</p></div>';return;}
-  const grid=document.createElement('div');grid.className='card-grid';
-  S.bots.forEach((b,i)=>{
-    const c=document.createElement('div');c.className='card';c.style.animationDelay=(i*0.03)+'s';
-    c.innerHTML='<div class="card-header"><div class="avatar" style="background:linear-gradient(135deg,var(--purple),var(--accent))">B</div><div><div class="card-title">'+esc(b.name)+'</div><div style="font-size:11px;color:var(--text-2)">ID: '+b.id+'</div></div><span class="badge '+(b.is_online?'online':'offline')+'">'+(b.is_online?'在线':'离线')+'</span></div><div class="card-desc">'+esc(b.description||'暂无描述')+'</div><div class="card-footer"><span style="font-size:10px;color:var(--text-3);font-family:monospace">'+esc((b.bot_key||'').substring(0,16))+'...</span><button class="glass-btn primary" style="padding:6px 14px;font-size:12px">详情</button></div>';
-    c.querySelector('.glass-btn').onclick=()=>showBotDetail(b);c.onclick=()=>showBotDetail(b);
-    grid.appendChild(c);
+  if(!bots.length){box.innerHTML='<div class="empty-state" style="padding:60px"><div class="empty-icon">🤖</div><p>暂无机器人</p><p style="font-size:12px;margin-top:4px">点右上角+创建</p></div>';return;}
+  bots.forEach((b,i)=>{
+    const c=document.createElement('div');c.className='bot-card';c.style.animationDelay=(i*0.05)+'s';
+    c.innerHTML='<div class="bot-card-header"><div class="bot-card-avatar">B</div><div style="flex:1"><div class="bot-card-name">'+esc(b.name)+'</div><div style="font-size:11px;color:var(--text-2)">ID: '+b.id+'</div></div><span class="badge '+(b.is_online?'online':'offline')+'">'+(b.is_online?'在线':'离线')+'</span></div><div class="bot-card-desc">'+esc(b.description||'暂无描述')+'</div><div class="bot-card-footer"><span style="font-size:10px;color:var(--text-3);font-family:monospace">'+esc((b.bot_key||'').substring(0,18))+'...</span><button class="glass-btn primary" style="padding:6px 14px;font-size:12px">详情</button></div>';
+    c.querySelector('.glass-btn').onclick=e=>{e.stopPropagation();showBotDetail(b);};
+    c.onclick=()=>showBotDetail(b);
+    box.appendChild(c);
   });
-  box.appendChild(grid);
 }
 function showBotDetail(b){
   const myGroups=(S.convs||[]).filter(c=>c.type==='group');
