@@ -8,7 +8,8 @@ let S = {
   convs: [], friends: [], requests: [], bots: [],
   messages: {}, ws: null, wsRetry: 0,
   tasks: JSON.parse(localStorage.getItem('jj_tasks')||'[]'),
-  moments: [], adminToken: null, groupInfo: null
+  moments: [], adminToken: null, groupInfo: null,
+  pollTimer: null, lastMsgId: 0
 };
 
 const $ = s => document.querySelector(s);
@@ -71,7 +72,7 @@ async function doLogin(){
     const d=await api('POST','/auth/login',{username_or_email:u,password:p,remember_me:remember});
     S.token=d.access_token;S.user=d.user;
     if(remember)localStorage.setItem('jj_token',d.access_token);
-    showMain();loadAll();connectWS();
+    showMain();loadAll();connectWS();startPolling();
   }catch(e){$('#li-msg').textContent=e.message;}
 }
 async function doRegister(){
@@ -87,11 +88,12 @@ async function doRegister(){
     const d=await api('POST','/auth/register',{username:u,password:p,nickname:n});
     S.token=d.access_token;S.user=d.user;
     // 注册后不自动保存 token，下次需要手动登录
-    showMain();loadAll();connectWS();
+    showMain();loadAll();connectWS();startPolling();
   }catch(e){$('#li-msg').textContent=e.message;}
 }
 function logout(){
   if(S.ws){try{S.ws.close();}catch(e){}}
+  stopPolling();
   S.token=null;S.user=null;S.conv=null;S.convs=[];S.friends=[];S.requests=[];S.bots=[];S.messages={};S.ws=null;S.groupInfo=null;
   localStorage.removeItem('jj_token');
   showLogin();
@@ -253,7 +255,9 @@ async function delUser(id){if(!confirm('确定删除？'))return;try{await admin
 /* ===== 群管理 ===== */
 function showGroupMenu(e){
   e.stopPropagation();
-  const g=S.groupInfo;if(!g)return;
+  if(!S.conv||S.conv.type!=='group')return;
+  if(!S.groupInfo){loadGroupInfo(S.conv.id).then(()=>showGroupMenu(e));return;}
+  const g=S.groupInfo;
   const isOwner=String(g.owner_id)===String(S.user.id);
   const myRole=g.members.find(m=>String(m.id)===String(S.user.id))?.role||'member';
   const canManage=isOwner||myRole==='admin';
@@ -381,12 +385,7 @@ function connectWS(){
     try{
       const d=JSON.parse(e.data);
       if(d.type==='message.created'&&d.data){
-        const m=d.data;
-        if(S.conv&&String(S.conv.id)===String(m.conversation_id)){
-          if(!S.messages[m.conversation_id])S.messages[m.conversation_id]=[];
-          S.messages[m.conversation_id].push(m);renderMsgs();
-        }
-        loadConvs().then(()=>{renderConvList();if(S.nav==='contacts')renderContacts();});
+        handleIncomingMessage(d.data);
       }
     }catch(e){}
   };
@@ -394,5 +393,40 @@ function connectWS(){
   S.ws.onerror=()=>{if(S.ws)S.ws.close();};
 }
 function scheduleReconnect(){S.wsRetry++;setTimeout(connectWS,Math.min(1000*Math.pow(2,S.wsRetry-1),30000));}
+
+function handleIncomingMessage(m){
+  if(S.conv&&String(S.conv.id)===String(m.conversation_id)){
+    if(!S.messages[m.conversation_id])S.messages[m.conversation_id]=[];
+    if(!S.messages[m.conversation_id].find(x=>x.id===m.id)){
+      S.messages[m.conversation_id].push(m);
+      renderMsgs();
+    }
+  }
+  loadConvs().then(()=>{renderConvList();if(S.nav==='contacts')renderContacts();});
+}
+
+// 轮询兜底：每3秒检查一次会话列表更新
+function startPolling(){
+  if(S.pollTimer)return;
+  S.pollTimer=setInterval(async()=>{
+    if(!S.token)return;
+    try{
+      const oldTitles={};S.convs.forEach(c=>oldTitles[c.id]=c.last_message?.id||0);
+      await loadConvs();
+      // 检查是否有新消息
+      for(const c of S.convs){
+        const oldId=oldTitles[c.id]||0;
+        const newId=c.last_message?.id||0;
+        if(newId>oldId&&S.conv&&String(S.conv.id)===String(c.id)){
+          // 当前会话有新消息，重新加载
+          S.messages[c.id]=await api('GET','/conversations/'+c.id+'/messages?limit=50');
+          renderMsgs();
+        }
+      }
+      renderConvList();
+    }catch(e){}
+  },3000);
+}
+function stopPolling(){if(S.pollTimer){clearInterval(S.pollTimer);S.pollTimer=null;}}
 
 init();
