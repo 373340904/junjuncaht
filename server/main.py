@@ -115,6 +115,16 @@ class Bot(Base):
     last_seen = Column(DateTime, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class Report(Base):
+    __tablename__ = "reports"
+    id = Column(Integer, primary_key=True)
+    reporter_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    target_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=True)
+    reason = Column(String(500), default="")
+    status = Column(String(20), default="pending")  # pending/resolved/rejected
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 # ========== WebSocket 连接管理 ==========
 class ConnectionManager:
     def __init__(self):
@@ -624,6 +634,198 @@ async def list_members(conversation_id: int, user: User = Depends(get_current_us
         result = await session.execute(select(User).where(User.id.in_(member_ids)))
         users = result.scalars().all()
         return [user_to_dict(u) for u in users]
+
+# ========== 群管理 ==========
+async def get_member_role(session, conversation_id, user_id):
+    result = await session.execute(
+        select(ConversationMember).where(
+            (ConversationMember.conversation_id == conversation_id) &
+            (ConversationMember.user_id == user_id)
+        )
+    )
+    return result.scalar_one_or_none()
+
+@app.get("/api/v1/conversations/{conversation_id}")
+async def get_conversation(conversation_id: int, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        conv = await session.get(Conversation, conversation_id)
+        if not conv:
+            raise HTTPException(404, "会话不存在")
+        # 成员列表（含角色）
+        result = await session.execute(
+            select(ConversationMember, User).join(User, ConversationMember.user_id == User.id)
+            .where(ConversationMember.conversation_id == conversation_id)
+        )
+        members = []
+        for member, u in result.fetchall():
+            d = user_to_dict(u)
+            d["role"] = member.role
+            d["muted_until"] = member.muted_until.isoformat() if member.muted_until else None
+            d["joined_at"] = member.joined_at.isoformat() if member.joined_at else None
+            members.append(d)
+        return {
+            "id": conv.id, "type": conv.type, "title": conv.title,
+            "owner_id": conv.owner_id, "announcement": conv.announcement or "",
+            "is_official": conv.is_official, "member_count": len(members),
+            "members": members, "created_at": conv.created_at.isoformat() if conv.created_at else None
+        }
+
+class GroupUpdateReq(BaseModel):
+    title: str = None
+    announcement: str = None
+
+@app.put("/api/v1/conversations/{conversation_id}")
+async def update_group(conversation_id: int, req: GroupUpdateReq, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        conv = await session.get(Conversation, conversation_id)
+        if not conv or conv.type != "group":
+            raise HTTPException(404, "群聊不存在")
+        member = await get_member_role(session, conversation_id, user.id)
+        if not member:
+            raise HTTPException(403, "不是群成员")
+        if member.role != "owner" and member.role != "admin":
+            raise HTTPException(403, "无权限")
+        if req.title is not None and member.role == "owner":
+            conv.title = req.title[:100]
+        if req.announcement is not None:
+            conv.announcement = req.announcement[:500]
+        await session.commit()
+        return {"status": "ok"}
+
+class RoleReq(BaseModel):
+    user_id: int
+    role: str  # admin/member
+
+@app.post("/api/v1/conversations/{conversation_id}/role")
+async def set_member_role(conversation_id: int, req: RoleReq, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        member = await get_member_role(session, conversation_id, user.id)
+        if not member or member.role != "owner":
+            raise HTTPException(403, "只有群主可以设置管理员")
+        target = await get_member_role(session, conversation_id, req.user_id)
+        if not target:
+            raise HTTPException(404, "用户不在群内")
+        if req.role not in ("admin", "member"):
+            raise HTTPException(400, "无效角色")
+        target.role = req.role
+        await session.commit()
+        return {"status": "ok"}
+
+class MuteReq(BaseModel):
+    user_id: int
+    duration_minutes: int = 0  # 0=解除禁言
+
+@app.post("/api/v1/conversations/{conversation_id}/mute")
+async def mute_member(conversation_id: int, req: MuteReq, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        member = await get_member_role(session, conversation_id, user.id)
+        if not member or member.role not in ("owner", "admin"):
+            raise HTTPException(403, "无权限")
+        target = await get_member_role(session, conversation_id, req.user_id)
+        if not target:
+            raise HTTPException(404, "用户不在群内")
+        if target.role == "owner":
+            raise HTTPException(403, "不能禁言群主")
+        if req.duration_minutes <= 0:
+            target.muted_until = None
+        else:
+            target.muted_until = datetime.utcnow() + timedelta(minutes=req.duration_minutes)
+        await session.commit()
+        return {"status": "ok", "muted_until": target.muted_until.isoformat() if target.muted_until else None}
+
+@app.post("/api/v1/conversations/{conversation_id}/kick")
+async def kick_member(conversation_id: int, req: RoleReq, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        member = await get_member_role(session, conversation_id, user.id)
+        if not member or member.role not in ("owner", "admin"):
+            raise HTTPException(403, "无权限")
+        target = await get_member_role(session, conversation_id, req.user_id)
+        if not target:
+            raise HTTPException(404, "用户不在群内")
+        if target.role == "owner":
+            raise HTTPException(403, "不能踢群主")
+        await session.delete(target)
+        await session.commit()
+        return {"status": "ok"}
+
+@app.post("/api/v1/conversations/{conversation_id}/leave")
+async def leave_group(conversation_id: int, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        conv = await session.get(Conversation, conversation_id)
+        if not conv or conv.type != "group":
+            raise HTTPException(404, "群聊不存在")
+        if conv.owner_id == user.id:
+            raise HTTPException(400, "群主不能退出，请先转让或解散")
+        member = await get_member_role(session, conversation_id, user.id)
+        if not member:
+            raise HTTPException(403, "不是群成员")
+        await session.delete(member)
+        await session.commit()
+        return {"status": "ok"}
+
+@app.delete("/api/v1/conversations/{conversation_id}")
+async def delete_group(conversation_id: int, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        conv = await session.get(Conversation, conversation_id)
+        if not conv or conv.type != "group":
+            raise HTTPException(404, "群聊不存在")
+        if conv.owner_id != user.id:
+            raise HTTPException(403, "只有群主可以解散")
+        # 删除成员和消息
+        await session.execute(delete(ConversationMember).where(ConversationMember.conversation_id == conversation_id))
+        await session.execute(delete(Message).where(Message.conversation_id == conversation_id))
+        await session.delete(conv)
+        await session.commit()
+        return {"status": "deleted"}
+
+# ========== 用户名片 ==========
+@app.get("/api/v1/users/{user_id}/profile")
+async def user_profile(user_id: int, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        u = await session.get(User, user_id)
+        if not u:
+            raise HTTPException(404, "用户不存在")
+        # 是否是好友
+        friend_result = await session.execute(
+            select(Friendship).where(
+                ((Friendship.user_id == user.id) & (Friendship.friend_id == user_id)) |
+                ((Friendship.user_id == user_id) & (Friendship.friend_id == user.id))
+            )
+        )
+        is_friend = friend_result.scalar_one_or_none() is not None
+        d = user_to_dict(u)
+        d["is_friend"] = is_friend
+        return d
+
+class AvatarReq(BaseModel):
+    avatar: str  # emoji 或 颜色
+
+@app.put("/api/v1/auth/avatar")
+async def update_avatar(req: AvatarReq, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        u = await session.get(User, user.id)
+        u.avatar = req.avatar[:10]
+        await session.commit()
+        return {"status": "ok", "avatar": u.avatar}
+
+# ========== 举报 ==========
+class ReportReq(BaseModel):
+    target_user_id: int
+    conversation_id: int = None
+    reason: str = ""
+
+@app.post("/api/v1/reports")
+async def create_report(req: ReportReq, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        report = Report(
+            reporter_id=user.id, target_user_id=req.target_user_id,
+            conversation_id=req.conversation_id, reason=req.reason[:500]
+        )
+        session.add(report)
+        await session.commit()
+        # 通知管理员（君衔，ID=junjun）
+        # 这里简化处理，记录到数据库
+        return {"status": "reported", "report_id": report.id}
 
 # ========== 消息 ==========
 @app.get("/api/v1/conversations/{conversation_id}/messages")
