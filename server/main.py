@@ -50,7 +50,8 @@ class User(Base):
     nickname = Column(String(100), default="")
     hashed_password = Column(String(200), nullable=False)
     avatar = Column(String(10), default="")
-    status = Column(String(20), default="offline")  # online/offline
+    status = Column(String(20), default="offline")  # online/away/busy/offline
+    signature = Column(String(200), default="")  # 个性签名
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -95,6 +96,7 @@ class Message(Base):
     sender_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     content = Column(Text, default="")
     message_type = Column(String(20), default="text")
+    is_deleted = Column(Boolean, default=False)  # 撤回
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Bot(Base):
@@ -186,7 +188,8 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
 def user_to_dict(u: User):
     return {
         "id": u.id, "username": u.username, "nickname": u.nickname or u.username,
-        "avatar": u.avatar, "status": u.status, "is_admin": u.is_admin,
+        "avatar": u.avatar, "status": u.status, "signature": u.signature or "",
+        "is_admin": u.is_admin,
         "created_at": u.created_at.isoformat() if u.created_at else None
     }
 
@@ -336,6 +339,33 @@ async def login(req: LoginReq):
 @app.get("/api/v1/auth/me")
 async def me(user: User = Depends(get_current_user)):
     return user_to_dict(user)
+
+class ProfileReq(BaseModel):
+    nickname: str = ""
+    signature: str = ""
+
+@app.put("/api/v1/auth/profile")
+async def update_profile(req: ProfileReq, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        u = await session.get(User, user.id)
+        if req.nickname: u.nickname = req.nickname[:100]
+        if req.signature is not None: u.signature = req.signature[:200]
+        await session.commit()
+        await session.refresh(u)
+        return user_to_dict(u)
+
+class StatusReq(BaseModel):
+    status: str = "online"
+
+@app.put("/api/v1/auth/status")
+async def update_status(req: StatusReq, user: User = Depends(get_current_user)):
+    if req.status not in ("online","away","busy","offline"):
+        raise HTTPException(400, "无效状态")
+    async with async_session() as session:
+        u = await session.get(User, user.id)
+        u.status = req.status
+        await session.commit()
+        return {"status": "ok"}
 
 # ========== 用户 ==========
 @app.get("/api/v1/users/search")
@@ -650,6 +680,52 @@ async def send_message(conversation_id: int, req: SendMsgReq, user: User = Depen
             "type": "message.created", "data": msg_data
         }, exclude_id=user.id)
         return msg_data
+
+# ========== 撤回消息 ==========
+@app.delete("/api/v1/messages/{message_id}")
+async def delete_message(message_id: int, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        result = await session.execute(select(Message).where(Message.id == message_id))
+        msg = result.scalar_one_or_none()
+        if not msg:
+            raise HTTPException(404, "消息不存在")
+        if msg.sender_id != user.id:
+            raise HTTPException(403, "只能撤回自己的消息")
+        # 2分钟内可撤回
+        if (datetime.utcnow() - msg.created_at).total_seconds() > 120:
+            raise HTTPException(400, "超过2分钟无法撤回")
+        msg.is_deleted = True
+        msg.content = "[消息已撤回]"
+        await session.commit()
+        msg_data = {
+            "id": msg.id, "conversation_id": msg.conversation_id,
+            "sender_id": msg.sender_id, "content": msg.content,
+            "message_type": msg.message_type, "is_deleted": True,
+            "created_at": msg.created_at.isoformat()
+        }
+        await manager.broadcast_to_conversation(msg.conversation_id, {
+            "type": "message.deleted", "data": msg_data
+        })
+        return {"success": True}
+
+# ========== 修改个人资料 ==========
+class UpdateProfileReq(BaseModel):
+    nickname: Optional[str] = None
+    signature: Optional[str] = None
+
+@app.put("/api/v1/users/me/profile")
+async def update_profile(req: UpdateProfileReq, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        result = await session.execute(select(User).where(User.id == user.id))
+        u = result.scalar_one_or_none()
+        if not u:
+            raise HTTPException(404, "用户不存在")
+        if req.nickname is not None:
+            u.nickname = req.nickname
+        if req.signature is not None:
+            u.signature = req.signature[:200]
+        await session.commit()
+        return user_to_dict(u)
 
 # ========== 机器人 ==========
 @app.get("/api/v1/bots/mine")

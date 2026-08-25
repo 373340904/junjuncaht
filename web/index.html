@@ -8,20 +8,13 @@
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<!-- 动态背景 -->
-<div class="bg-orbs">
-  <div class="orb orb1"></div>
-  <div class="orb orb2"></div>
-  <div class="orb orb3"></div>
-</div>
+<div class="bg-orbs"><div class="orb orb1"></div><div class="orb orb2"></div><div class="orb orb3"></div></div>
 
 <!-- 登录面板 -->
 <div id="login-panel" class="login-panel">
   <div class="glass-card login-card">
     <div class="login-logo">
-      <div class="logo-icon">
-        <img src="logo.png" alt="JunjunChat">
-      </div>
+      <div class="logo-icon"><img src="logo.png" alt="JunjunChat"></div>
       <h1 class="app-title">JunjunChat</h1>
       <p class="app-subtitle">随时随地，你我都在</p>
     </div>
@@ -29,9 +22,7 @@
       <input id="li-user" type="text" placeholder="用户名" class="glass-input">
       <input id="li-pass" type="password" placeholder="密码" class="glass-input">
       <button id="li-btn" class="glass-btn primary">登 录</button>
-      <div class="login-footer">
-        <span id="to-reg">没有账号？注册</span>
-      </div>
+      <div class="login-footer"><span id="to-reg">没有账号？注册</span></div>
     </div>
     <div id="reg-form" style="display:none">
       <input id="re-user" type="text" placeholder="用户名 (3-50位)" class="glass-input">
@@ -50,167 +41,125 @@
   <!-- 左侧导航栏 -->
   <div class="sidebar">
     <div class="sidebar-avatar" id="sidebar-avatar" title="个人资料">?</div>
-    <div class="nav-item active" data-nav="chat" title="聊天">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-    </div>
-    <div class="nav-item" data-nav="contacts" title="联系人">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-    </div>
-    <div class="nav-item" data-nav="space" title="动态">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
-    </div>
-    <div class="nav-item" data-nav="bots" title="机器人">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8.01" y2="16"/><line x1="16" y1="16" x2="16.01" y2="16"/></svg>
-    </div>
+    <div class="nav-item active" data-nav="chat" title="消息"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+    <div class="nav-item" data-nav="contacts" title="联系人"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+    <div class="nav-item" data-nav="space" title="动态"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>
+    <div class="nav-item" data-nav="bots" title="机器人"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8.01" y2="16"/><line x1="16" y1="16" x2="16.01" y2="16"/></svg></div>
+    <div class="nav-item" data-nav="tasks" title="任务"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+    <div class="nav-item" data-nav="files" title="文件"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg></div>
+    <div class="nav-item" data-nav="favorites" title="收藏"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div>
     <div style="flex:1"></div>
-    <div class="nav-item" id="theme-toggle" title="切换主题">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-    </div>
-    <div class="nav-item" data-nav="settings" title="设置">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-    </div>
+    <div class="nav-item" id="notif-btn" title="通知"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="nav-badge" id="notif-badge" style="display:none">0</span></div>
+    <div class="nav-item" id="theme-toggle" title="切换主题"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></div>
+    <div class="nav-item" data-nav="settings" title="设置"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
   </div>
 
-  <!-- 聊天/列表面板 -->
+  <!-- 二级侧边栏（联系人/动态等用） -->
+  <div class="sub-sidebar" id="sub-sidebar" style="display:none">
+    <div class="sub-sidebar-header" id="sub-sidebar-title">联系人</div>
+    <div class="sub-sidebar-list" id="sub-sidebar-list"></div>
+  </div>
+
+  <!-- 列表面板 -->
   <div class="list-panel" id="panel-chat">
-    <div class="panel-header">
-      <span class="panel-title">聊天</span>
-      <div class="panel-actions">
-        <button class="icon-btn" id="btn-add-chat" title="发起聊天">+</button>
-      </div>
-    </div>
-    <div class="tab-bar">
-      <div class="tab active" data-list="conversations">消息</div>
-      <div class="tab" data-list="friends">好友</div>
-      <div class="tab" data-list="groups">群聊</div>
-    </div>
-    <div class="search-box">
-      <input id="search-input" type="text" placeholder="搜索...">
-    </div>
+    <div class="panel-header"><span class="panel-title">消息</span><div class="panel-actions"><button class="icon-btn" id="btn-add-chat" title="发起聊天">+</button></div></div>
+    <div class="tab-bar"><div class="tab active" data-list="conversations">消息</div><div class="tab" data-list="friends">好友</div><div class="tab" data-list="groups">群聊</div></div>
+    <div class="search-box"><input id="search-input" type="text" placeholder="搜索..."></div>
     <div class="list-container" id="chat-list"></div>
   </div>
 
-  <!-- 联系人面板 -->
   <div class="list-panel" id="panel-contacts" style="display:none">
-    <div class="panel-header">
-      <span class="panel-title">联系人</span>
-      <div class="panel-actions">
-        <button class="icon-btn" id="btn-add-friend" title="添加好友">+</button>
-      </div>
+    <div class="panel-header"><span class="panel-title">联系人</span><div class="panel-actions"><button class="icon-btn" id="btn-add-friend" title="添加好友">+</button></div></div>
+    <div class="contact-cats">
+      <div class="contact-cat active" data-cat="friends"><div class="cat-icon">👥</div><div><div class="cat-name">我的好友</div><div class="cat-count" id="friend-count">0 位联系人</div></div></div>
+      <div class="contact-cat" data-cat="requests"><div class="cat-icon">🔔</div><div><div class="cat-name">通知中心</div><div class="cat-count" id="request-count">0 条待处理</div></div></div>
+      <div class="contact-cat" data-cat="groups"><div class="cat-icon">👨‍👩‍👧‍👦</div><div><div class="cat-name">我的群聊</div><div class="cat-count" id="group-count">0 个群聊</div></div></div>
     </div>
-    <div class="list-container" id="friends-list"></div>
+    <div class="list-container" id="contacts-list"></div>
   </div>
 
-  <!-- 动态面板 -->
   <div class="list-panel" id="panel-space" style="display:none">
-    <div class="panel-header"><span class="panel-title">动态</span></div>
-    <div class="space-container">
-      <div class="empty-state">
-        <div class="empty-icon">✨</div>
-        <p>动态功能开发中...</p>
-        <p class="empty-sub">敬请期待</p>
-      </div>
-    </div>
+    <div class="panel-header"><span class="panel-title">好友动态</span><div class="panel-actions"><button class="icon-btn" id="btn-post-moment" title="发动态">✏️</button></div></div>
+    <div class="space-container" id="space-container"></div>
   </div>
 
-  <!-- 机器人面板 -->
   <div class="list-panel" id="panel-bots" style="display:none">
-    <div class="panel-header">
-      <span class="panel-title">机器人</span>
-      <div class="panel-actions">
-        <button class="icon-btn" id="btn-create-bot" title="创建机器人">+</button>
-      </div>
+    <div class="panel-header"><span class="panel-title">机器人广场</span><div class="panel-actions"><button class="icon-btn" id="btn-create-bot" title="创建机器人">+</button></div></div>
+    <div class="bot-stats">
+      <div class="bot-stat-card"><div class="stat-num" id="stat-total">0</div><div class="stat-label">广场机器人</div></div>
+      <div class="bot-stat-card"><div class="stat-num" id="stat-online">0</div><div class="stat-label">实时在线</div></div>
+      <div class="bot-stat-card"><div class="stat-num" id="stat-mine">0</div><div class="stat-label">我的机器人</div></div>
     </div>
-    <div class="list-container" id="bots-list"></div>
+    <div class="bot-tabs"><div class="bot-tab active" data-bottab="square">广场</div><div class="bot-tab" data-bottab="mine">我的机器人</div></div>
+    <div class="bot-grid" id="bot-grid"></div>
   </div>
 
-  <!-- 设置面板 -->
+  <div class="list-panel" id="panel-tasks" style="display:none">
+    <div class="panel-header"><span class="panel-title">任务待办</span><div class="panel-actions"><button class="icon-btn" id="btn-add-task" title="添加任务">+</button></div></div>
+    <div class="task-container" id="task-container"></div>
+  </div>
+
+  <div class="list-panel" id="panel-files" style="display:none">
+    <div class="panel-header"><span class="panel-title">文件</span></div>
+    <div class="empty-state"><div class="empty-icon">📁</div><p>文件功能开发中</p></div>
+  </div>
+
+  <div class="list-panel" id="panel-favorites" style="display:none">
+    <div class="panel-header"><span class="panel-title">收藏</span></div>
+    <div class="empty-state"><div class="empty-icon">⭐</div><p>收藏功能开发中</p></div>
+  </div>
+
   <div class="list-panel" id="panel-settings" style="display:none">
     <div class="panel-header"><span class="panel-title">设置</span></div>
     <div class="settings-container">
-      <div class="setting-section">
-        <h3>个人设置</h3>
-        <div class="setting-item">
-          <span>当前状态</span>
-          <select id="status-select" class="glass-input">
-            <option value="online">在线</option>
-            <option value="away">离开</option>
-            <option value="busy">忙碌</option>
-            <option value="offline">隐身</option>
-          </select>
-        </div>
-        <div class="setting-item">
-          <span>主题模式</span>
-          <button id="theme-btn" class="glass-btn">切换深浅色</button>
-        </div>
+      <div class="setting-section"><h3>个人资料</h3>
+        <div class="setting-item"><span>昵称</span><input id="set-nick" class="glass-input" placeholder="昵称"></div>
+        <div class="setting-item"><span>个性签名</span><input id="set-sign" class="glass-input" placeholder="个性签名"></div>
+        <div class="setting-item"><span>当前状态</span><select id="status-select" class="glass-input"><option value="online">在线</option><option value="away">离开</option><option value="busy">忙碌</option><option value="offline">隐身</option></select></div>
+        <button class="glass-btn primary" id="btn-save-profile">保存资料</button>
       </div>
-      <div class="setting-section">
-        <h3>管理员</h3>
-        <div class="setting-item">
-          <input id="admin-pass" type="password" placeholder="管理员密码" class="glass-input">
-          <button id="admin-login" class="glass-btn">进入管理后台</button>
-        </div>
-        <div id="admin-panel" style="display:none">
-          <div class="admin-stats" id="admin-stats"></div>
-          <div class="admin-users" id="admin-users"></div>
-        </div>
+      <div class="setting-section"><h3>外观</h3>
+        <div class="setting-item"><span>主题模式</span><button id="theme-btn" class="glass-btn">切换深浅色</button></div>
       </div>
-      <div class="setting-section">
-        <h3>关于</h3>
-        <p class="about-text">JunjunChat v2.0</p>
-        <p class="about-text">独立聊天平台 · 液态玻璃设计</p>
+      <div class="setting-section"><h3>管理员</h3>
+        <div class="setting-item"><input id="admin-pass" type="password" placeholder="管理员密码" class="glass-input"><button id="admin-login" class="glass-btn">进入管理后台</button></div>
+        <div id="admin-panel" style="display:none"><div class="admin-stats" id="admin-stats"></div><div class="admin-users" id="admin-users"></div></div>
       </div>
+      <div class="setting-section"><h3>账号</h3><button class="glass-btn" id="btn-logout">退出登录</button></div>
     </div>
   </div>
 
   <!-- 聊天主区域 -->
   <div class="chat-area" id="chat-area">
-    <div class="chat-header">
-      <span id="chat-title">选择一个会话开始聊天</span>
-      <div class="chat-actions">
-        <button class="icon-btn" id="btn-group-info" title="群信息" style="display:none">i</button>
-      </div>
-    </div>
-    <div class="messages-container" id="messages-container">
-      <div class="empty-state">
-        <div class="empty-icon">💬</div>
-        <p>选择一个会话开始聊天</p>
-      </div>
-    </div>
+    <div class="chat-header"><span id="chat-title">选择一个会话开始聊天</span><div class="chat-actions"><button class="icon-btn" id="btn-group-info" title="群信息" style="display:none">i</button></div></div>
+    <div class="group-announcement" id="group-announcement" style="display:none"></div>
+    <div class="messages-container" id="messages-container"><div class="empty-state"><div class="empty-icon">💬</div><p>选择一个会话开始聊天</p></div></div>
     <div class="input-area">
       <div class="emoji-panel" id="emoji-panel" style="display:none"></div>
-      <div class="input-toolbar">
-        <button class="icon-btn" id="btn-emoji" title="表情">😊</button>
-      </div>
-      <div class="input-wrapper">
-        <textarea id="message-input" placeholder="输入消息，Enter发送，Shift+Enter换行..."></textarea>
-        <button id="btn-send" class="send-btn">发送</button>
-      </div>
+      <div class="input-toolbar"><button class="icon-btn" id="btn-emoji" title="表情">😊</button></div>
+      <div class="input-wrapper"><textarea id="message-input" placeholder="输入消息，Enter发送，Shift+Enter换行..."></textarea><button id="btn-send" class="send-btn">发送</button></div>
     </div>
   </div>
 
-  <!-- 机器人详情面板（右侧） -->
+  <!-- 机器人详情面板 -->
   <div class="bot-detail-panel" id="bot-detail-panel" style="display:none">
-    <div class="bot-detail-header">
-      <span id="bot-detail-name">机器人</span>
-      <button class="icon-btn" id="btn-close-bot-detail">×</button>
-    </div>
+    <div class="bot-detail-header"><span id="bot-detail-name">机器人</span><button class="icon-btn" id="btn-close-bot-detail">×</button></div>
     <div class="bot-detail-content" id="bot-detail-content"></div>
+  </div>
+
+  <!-- 群信息面板 -->
+  <div class="bot-detail-panel" id="group-info-panel" style="display:none">
+    <div class="bot-detail-header"><span id="group-info-title">群信息</span><button class="icon-btn" id="btn-close-group-info">×</button></div>
+    <div class="bot-detail-content" id="group-info-content"></div>
   </div>
 </div>
 
 <!-- 弹窗 -->
 <div id="modal" class="modal" style="display:none">
   <div class="modal-content glass-card">
-    <div class="modal-header">
-      <span id="modal-title">标题</span>
-      <button class="icon-btn" id="modal-close">×</button>
-    </div>
+    <div class="modal-header"><span id="modal-title">标题</span><button class="icon-btn" id="modal-close">×</button></div>
     <div class="modal-body" id="modal-body"></div>
-    <div class="modal-footer">
-      <button class="glass-btn" id="modal-cancel">取消</button>
-      <button class="glass-btn primary" id="modal-ok">确定</button>
-    </div>
+    <div class="modal-footer"><button class="glass-btn" id="modal-cancel">取消</button><button class="glass-btn primary" id="modal-ok">确定</button></div>
   </div>
 </div>
 
