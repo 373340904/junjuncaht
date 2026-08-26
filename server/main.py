@@ -208,15 +208,6 @@ class Report(Base):
     status = Column(String(20), default="pending")  # pending/resolved/rejected
     created_at = Column(DateTime, default=datetime.utcnow)
 
-class Announcement(Base):
-    __tablename__ = "announcements"
-    id = Column(Integer, primary_key=True)
-    title = Column(String(200), default="")
-    content = Column(Text, default="")
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
 # ========== WebSocket 连接管理 ==========
 class ConnectionManager:
     def __init__(self):
@@ -412,14 +403,29 @@ async def lifespan(app: FastAPI):
     # 初始化官方群
     async with async_session() as session:
         result = await session.execute(select(Conversation).where(Conversation.is_official == True))
-        if not result.scalar_one_or_none():
+        official = result.scalar_one_or_none()
+        if not official:
             official = Conversation(
                 type="group", title=OFFICIAL_GROUP_TITLE,
-                owner_id=None, is_official=True,
+                owner_id=1, is_official=True,
                 announcement="欢迎来到 JunjunChat 官方群！这里是大家交流的地方。"
             )
             session.add(official)
             await session.commit()
+            await session.refresh(official)
+            # 设置群主角色
+            owner_member = await session.execute(select(ConversationMember).where(
+                ConversationMember.conversation_id == official.id,
+                ConversationMember.user_id == 1
+            ))
+            if not owner_member.scalar_one_or_none():
+                session.add(ConversationMember(conversation_id=official.id, user_id=1, role="owner"))
+                await session.commit()
+        else:
+            # 确保官方群群主是 ID=1
+            if official.owner_id != 1:
+                official.owner_id = 1
+                await session.commit()
     yield
 
 app = FastAPI(title="JunjunChat API", lifespan=lifespan)
@@ -557,14 +563,14 @@ async def admin_list_announcements(password: str = ""):
     async with async_session() as session:
         result = await session.execute(select(Announcement).order_by(Announcement.id.desc()).limit(20))
         items = result.scalars().all()
-        return [{"id": a.id, "title": a.title, "content": a.content, "is_active": a.is_active, "created_at": a.created_at.isoformat()} for a in items]
+        return [{"id": a.id, "title": a.title, "content": a.content, "is_global": a.is_global, "created_at": a.created_at.isoformat()} for a in items]
 
 @app.post("/api/v1/admin/announcements")
 async def admin_create_announcement(req: AnnouncementReq):
     if req.password != ADMIN_PANEL_PASSWORD:
         raise HTTPException(403, "密码错误")
     async with async_session() as session:
-        ann = Announcement(title=req.title[:200], content=req.content, is_active=True)
+        ann = Announcement(title=req.title[:200], content=req.content, author_id=1, is_global=True)
         session.add(ann)
         await session.commit()
         await session.refresh(ann)
@@ -573,7 +579,7 @@ async def admin_create_announcement(req: AnnouncementReq):
 @app.get("/api/v1/announcements")
 async def public_announcements():
     async with async_session() as session:
-        result = await session.execute(select(Announcement).where(Announcement.is_active == True).order_by(Announcement.id.desc()).limit(10))
+        result = await session.execute(select(Announcement).where(Announcement.is_global == True).order_by(Announcement.id.desc()).limit(10))
         items = result.scalars().all()
         return [{"id": a.id, "title": a.title, "content": a.content, "created_at": a.created_at.isoformat()} for a in items]
 
@@ -886,9 +892,9 @@ async def create_group(req: CreateGroupReq, user: User = Depends(get_current_use
         conv = Conversation(type="group", title=req.title, owner_id=user.id)
         session.add(conv)
         await session.flush()
-        session.add(ConversationMember(conversation_id=conv.id, user_id=user.id))
+        session.add(ConversationMember(conversation_id=conv.id, user_id=user.id, role="owner"))
         for mid in req.member_ids:
-            session.add(ConversationMember(conversation_id=conv.id, user_id=mid))
+            session.add(ConversationMember(conversation_id=conv.id, user_id=mid, role="member"))
         await session.commit()
         await session.refresh(conv)
         return {"id": conv.id, "type": "group", "title": conv.title}
@@ -1056,6 +1062,78 @@ async def leave_group(conversation_id: int, user: User = Depends(get_current_use
         if not member:
             raise HTTPException(403, "不是群成员")
         await session.delete(member)
+        await session.commit()
+        return {"status": "ok"}
+
+# ========== RESTful 群成员管理（匹配前端）==========
+class MemberRoleReq(BaseModel):
+    role: str  # admin/member
+
+class MemberMuteReq(BaseModel):
+    muted: bool = False
+    muted_until: Optional[str] = None
+
+@app.get("/api/v1/conversations/{conversation_id}/members/{user_id}")
+async def get_member(conversation_id: int, user_id: int, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        member = await get_member_role(session, conversation_id, user_id)
+        if not member:
+            raise HTTPException(404, "用户不在群内")
+        target_user = await session.get(User, user_id)
+        return {**user_to_dict(target_user), "role": member.role, "muted_until": member.muted_until.isoformat() if member.muted_until else None}
+
+@app.patch("/api/v1/conversations/{conversation_id}/members/{user_id}/role")
+async def patch_member_role(conversation_id: int, user_id: int, req: MemberRoleReq, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        member = await get_member_role(session, conversation_id, user.id)
+        if not member or member.role != "owner":
+            raise HTTPException(403, "只有群主可以设置管理员")
+        target = await get_member_role(session, conversation_id, user_id)
+        if not target:
+            raise HTTPException(404, "用户不在群内")
+        if req.role not in ("admin", "member"):
+            raise HTTPException(400, "无效角色")
+        target.role = req.role
+        await session.commit()
+        target_user = await session.get(User, user_id)
+        return {**user_to_dict(target_user), "role": target.role}
+
+@app.patch("/api/v1/conversations/{conversation_id}/members/{user_id}/mute")
+async def patch_member_mute(conversation_id: int, user_id: int, req: MemberMuteReq, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        member = await get_member_role(session, conversation_id, user.id)
+        if not member or member.role not in ("owner", "admin"):
+            raise HTTPException(403, "无权限")
+        target = await get_member_role(session, conversation_id, user_id)
+        if not target:
+            raise HTTPException(404, "用户不在群内")
+        if target.role == "owner":
+            raise HTTPException(403, "不能禁言群主")
+        if req.muted and req.muted_until:
+            try:
+                target.muted_until = datetime.fromisoformat(req.muted_until.replace("Z", "+00:00"))
+            except:
+                target.muted_until = datetime.utcnow() + timedelta(hours=1)
+        elif req.muted:
+            target.muted_until = datetime.utcnow() + timedelta(hours=1)
+        else:
+            target.muted_until = None
+        await session.commit()
+        target_user = await session.get(User, user_id)
+        return {**user_to_dict(target_user), "role": target.role, "muted_until": target.muted_until.isoformat() if target.muted_until else None}
+
+@app.delete("/api/v1/conversations/{conversation_id}/members/{user_id}")
+async def delete_member(conversation_id: int, user_id: int, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        member = await get_member_role(session, conversation_id, user.id)
+        if not member or member.role not in ("owner", "admin"):
+            raise HTTPException(403, "无权限")
+        target = await get_member_role(session, conversation_id, user_id)
+        if not target:
+            raise HTTPException(404, "用户不在群内")
+        if target.role == "owner":
+            raise HTTPException(403, "不能踢群主")
+        await session.delete(target)
         await session.commit()
         return {"status": "ok"}
 
