@@ -13,9 +13,9 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Header
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Header, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base, relationship
@@ -112,7 +112,90 @@ class Bot(Base):
     bot_key = Column(String(100), unique=True, index=True, nullable=False)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     is_online = Column(Boolean, default=False)
+    is_public = Column(Boolean, default=True)
+    avatar_url = Column(String(500), default="")
+    category = Column(String(50), default="general")
+    install_count = Column(Integer, default=0)
+    rating = Column(Float, default=0)
+    review_count = Column(Integer, default=0)
     last_seen = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class Post(Base):
+    __tablename__ = "posts"
+    id = Column(Integer, primary_key=True)
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    content = Column(Text, default="")
+    images = Column(Text, default="")  # JSON array
+    likes_count = Column(Integer, default=0)
+    comments_count = Column(Integer, default=0)
+    is_deleted = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class PostLike(Base):
+    __tablename__ = "post_likes"
+    id = Column(Integer, primary_key=True)
+    post_id = Column(Integer, ForeignKey("posts.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class PostComment(Base):
+    __tablename__ = "post_comments"
+    id = Column(Integer, primary_key=True)
+    post_id = Column(Integer, ForeignKey("posts.id"), nullable=False)
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    content = Column(Text, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class Task(Base):
+    __tablename__ = "tasks"
+    id = Column(Integer, primary_key=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=True)
+    creator_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    assignee_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    title = Column(String(200), nullable=False)
+    description = Column(Text, default="")
+    status = Column(String(20), default="pending")  # pending/in_progress/done
+    priority = Column(String(20), default="normal")  # low/normal/high
+    due_date = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class Announcement(Base):
+    __tablename__ = "announcements"
+    id = Column(Integer, primary_key=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=True)
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    title = Column(String(200), default="")
+    content = Column(Text, default="")
+    is_global = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class Bookmark(Base):
+    __tablename__ = "bookmarks"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    message_id = Column(Integer, ForeignKey("messages.id"), nullable=False)
+    conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class BotInstallation(Base):
+    __tablename__ = "bot_installations"
+    id = Column(Integer, primary_key=True)
+    bot_id = Column(Integer, ForeignKey("bots.id"), nullable=False)
+    conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=False)
+    installed_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    enabled = Column(Boolean, default=True)
+    receive_messages = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class BotReview(Base):
+    __tablename__ = "bot_reviews"
+    id = Column(Integer, primary_key=True)
+    bot_id = Column(Integer, ForeignKey("bots.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    rating = Column(Integer, default=5)
+    content = Column(Text, default="")
+    likes_count = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Report(Base):
@@ -212,6 +295,12 @@ def bot_to_dict(b: Bot):
     return {
         "id": b.id, "name": b.name, "description": b.description,
         "bot_key": b.bot_key, "owner_id": b.owner_id, "is_online": b.is_online,
+        "is_public": b.is_public if hasattr(b, 'is_public') else True,
+        "avatar_url": b.avatar_url if hasattr(b, 'avatar_url') else "",
+        "category": b.category if hasattr(b, 'category') else "general",
+        "install_count": b.install_count if hasattr(b, 'install_count') else 0,
+        "rating": b.rating if hasattr(b, 'rating') else 0,
+        "review_count": b.review_count if hasattr(b, 'review_count') else 0,
         "last_seen": b.last_seen.isoformat() if b.last_seen else None,
         "user_id": b.id + 1000000,  # 机器人虚拟用户ID
         "created_at": b.created_at.isoformat() if b.created_at else None
@@ -2026,6 +2115,397 @@ async def online_count_kuke(user: User = Depends(get_current_user)):
     async with async_session() as session:
         result = await session.execute(select(func.count(User.id)).where(User.status == "online"))
         return {"online_count": result.scalar() or 0}
+
+# ========== 机器人广场完整 API ==========
+@app.get("/api/v1/bots/square")
+async def bot_square(q: str = "", limit: int = 20, offset: int = 0):
+    async with async_session() as session:
+        query = select(Bot).where(Bot.is_public == True)
+        if q:
+            query = query.where(Bot.name.ilike(f"%{q}%"))
+        query = query.order_by(Bot.install_count.desc()).offset(offset).limit(limit)
+        result = await session.execute(query)
+        bots = result.scalars().all()
+        total = await session.execute(select(func.count(Bot.id)).where(Bot.is_public == True))
+        return {"items": [bot_to_dict(b) for b in bots], "total": total.scalar() or 0, "limit": limit, "offset": offset}
+
+@app.get("/api/v1/bots/mine")
+async def my_bots(user=Depends(get_current_user)):
+    async with async_session() as session:
+        result = await session.execute(select(Bot).where(Bot.owner_id == user.id).order_by(Bot.created_at.desc()))
+        bots = result.scalars().all()
+        return [bot_to_dict(b) for b in bots]
+
+@app.post("/api/v1/bots")
+async def create_bot(payload: dict, user=Depends(get_current_user)):
+    name = payload.get("name", "").strip()
+    if not name:
+        raise HTTPException(400, "机器人名称不能为空")
+    bot_key = "jj_" + secrets.token_urlsafe(24)
+    async with async_session() as session:
+        bot = Bot(name=name, description=payload.get("description", ""), bot_key=bot_key,
+                  owner_id=user.id, is_public=payload.get("is_public", True),
+                  avatar_url=payload.get("avatar_url", ""), category=payload.get("category", "general"))
+        session.add(bot)
+        await session.commit()
+        await session.refresh(bot)
+        return {"id": bot.id, "name": bot.name, "description": bot.description, "bot_key": bot.bot_key,
+                "is_public": bot.is_public, "avatar_url": bot.avatar_url, "category": bot.category,
+                "is_online": bot.is_online, "install_count": 0, "rating": 0, "review_count": 0,
+                "created_at": bot.created_at.isoformat()}
+
+@app.get("/api/v1/bots/{bot_id}")
+async def get_bot(bot_id: int):
+    async with async_session() as session:
+        bot = await session.get(Bot, bot_id)
+        if not bot:
+            raise HTTPException(404, "机器人不存在")
+        return bot_to_dict(bot)
+
+@app.patch("/api/v1/bots/{bot_id}")
+async def update_bot(bot_id: int, payload: dict, user=Depends(get_current_user)):
+    async with async_session() as session:
+        bot = await session.get(Bot, bot_id)
+        if not bot or bot.owner_id != user.id:
+            raise HTTPException(403, "无权限")
+        for field in ["name", "description", "is_public", "avatar_url", "category"]:
+            if field in payload:
+                setattr(bot, field, payload[field])
+        await session.commit()
+        await session.refresh(bot)
+        return bot_to_dict(bot)
+
+@app.delete("/api/v1/bots/{bot_id}")
+async def delete_bot(bot_id: int, user=Depends(get_current_user)):
+    async with async_session() as session:
+        bot = await session.get(Bot, bot_id)
+        if not bot or bot.owner_id != user.id:
+            raise HTTPException(403, "无权限")
+        await session.delete(bot)
+        await session.commit()
+        return {"ok": True}
+
+@app.get("/api/v1/bots/{bot_id}/dashboard")
+async def bot_dashboard(bot_id: int, user=Depends(get_current_user)):
+    async with async_session() as session:
+        bot = await session.get(Bot, bot_id)
+        if not bot or bot.owner_id != user.id:
+            raise HTTPException(403, "无权限")
+        installs = await session.execute(select(func.count(BotInstallation.id)).where(BotInstallation.bot_id == bot_id))
+        reviews = await session.execute(select(func.count(BotReview.id)).where(BotReview.bot_id == bot_id))
+        return {"bot_id": bot_id, "install_count": installs.scalar() or 0, "review_count": reviews.scalar() or 0,
+                "is_online": bot.is_online, "last_seen": bot.last_seen.isoformat() if bot.last_seen else None,
+                "message_count": 0, "active_users": 0}
+
+@app.post("/api/v1/bots/{bot_id}/rotate-key")
+async def rotate_bot_key(bot_id: int, user=Depends(get_current_user)):
+    async with async_session() as session:
+        bot = await session.get(Bot, bot_id)
+        if not bot or bot.owner_id != user.id:
+            raise HTTPException(403, "无权限")
+        new_key = "jj_" + secrets.token_urlsafe(24)
+        bot.bot_key = new_key
+        await session.commit()
+        return {"bot_id": bot_id, "key": new_key, "key_prefix": new_key[:12]}
+
+@app.post("/api/v1/bots/{bot_id}/install")
+async def install_bot(bot_id: int, payload: dict, user=Depends(get_current_user)):
+    conv_id = payload.get("conversation_id")
+    if not conv_id:
+        raise HTTPException(400, "缺少会话ID")
+    async with async_session() as session:
+        bot = await session.get(Bot, bot_id)
+        if not bot:
+            raise HTTPException(404, "机器人不存在")
+        existing = await session.execute(select(BotInstallation).where(
+            BotInstallation.bot_id == bot_id, BotInstallation.conversation_id == conv_id))
+        if existing.scalar_one_or_none():
+            raise HTTPException(400, "机器人已安装")
+        inst = BotInstallation(bot_id=bot_id, conversation_id=conv_id, installed_by=user.id,
+                               enabled=payload.get("enabled", True), receive_messages=payload.get("receive_messages", True))
+        session.add(inst)
+        bot.install_count = (bot.install_count or 0) + 1
+        await session.commit()
+        await session.refresh(inst)
+        return {"id": inst.id, "bot_id": bot_id, "conversation_id": conv_id, "enabled": inst.enabled,
+                "receive_messages": inst.receive_messages, "created_at": inst.created_at.isoformat()}
+
+@app.get("/api/v1/bots/conversations/{conversation_id}/bots")
+async def conversation_bots(conversation_id: int):
+    async with async_session() as session:
+        result = await session.execute(select(BotInstallation).where(BotInstallation.conversation_id == conversation_id))
+        installs = result.scalars().all()
+        output = []
+        for inst in installs:
+            bot = await session.get(Bot, inst.bot_id)
+            if bot:
+                output.append({"id": inst.id, "bot_id": bot.id, "bot_name": bot.name, "bot_avatar": bot.avatar_url,
+                               "conversation_id": conversation_id, "enabled": inst.enabled, "is_online": bot.is_online,
+                               "created_at": inst.created_at.isoformat()})
+        return output
+
+@app.delete("/api/v1/bots/{bot_id}/installations/{conversation_id}")
+async def remove_bot_installation(bot_id: int, conversation_id: int, user=Depends(get_current_user)):
+    async with async_session() as session:
+        result = await session.execute(select(BotInstallation).where(
+            BotInstallation.bot_id == bot_id, BotInstallation.conversation_id == conversation_id))
+        inst = result.scalar_one_or_none()
+        if inst:
+            await session.delete(inst)
+            bot = await session.get(Bot, bot_id)
+            if bot and bot.install_count:
+                bot.install_count -= 1
+            await session.commit()
+        return {"ok": True}
+
+@app.get("/api/v1/bots/{bot_id}/reviews")
+async def bot_reviews(bot_id: int):
+    async with async_session() as session:
+        result = await session.execute(select(BotReview).where(BotReview.bot_id == bot_id).order_by(BotReview.created_at.desc()))
+        reviews = result.scalars().all()
+        output = []
+        for r in reviews:
+            user = await session.get(User, r.user_id)
+            output.append({"id": r.id, "bot_id": r.bot_id, "user_id": r.user_id,
+                           "user_name": user.nickname if user else "用户", "rating": r.rating,
+                           "content": r.content, "likes_count": r.likes_count, "created_at": r.created_at.isoformat()})
+        return output
+
+@app.put("/api/v1/bots/{bot_id}/reviews/me")
+async def upsert_bot_review(bot_id: int, payload: dict, user=Depends(get_current_user)):
+    async with async_session() as session:
+        result = await session.execute(select(BotReview).where(
+            BotReview.bot_id == bot_id, BotReview.user_id == user.id))
+        review = result.scalar_one_or_none()
+        if review:
+            review.rating = payload.get("rating", 5)
+            review.content = payload.get("content", "")
+        else:
+            review = BotReview(bot_id=bot_id, user_id=user.id, rating=payload.get("rating", 5),
+                               content=payload.get("content", ""))
+            session.add(review)
+        await session.commit()
+        await session.refresh(review)
+        return {"id": review.id, "bot_id": bot_id, "user_id": user.id, "rating": review.rating,
+                "content": review.content, "created_at": review.created_at.isoformat()}
+
+# ========== 动态/帖子 API ==========
+@app.get("/api/v1/posts")
+async def list_posts(limit: int = 20, offset: int = 0):
+    async with async_session() as session:
+        result = await session.execute(select(Post).where(Post.is_deleted == False).order_by(Post.created_at.desc()).offset(offset).limit(limit))
+        posts = result.scalars().all()
+        output = []
+        for p in posts:
+            author = await session.get(User, p.author_id)
+            output.append({"id": p.id, "author_id": p.author_id, "author_name": author.nickname if author else "用户",
+                           "author_avatar": author.avatar if author else "", "content": p.content,
+                           "images": json.loads(p.images) if p.images else [], "likes_count": p.likes_count,
+                           "comments_count": p.comments_count, "created_at": p.created_at.isoformat()})
+        return output
+
+@app.post("/api/v1/posts")
+async def create_post(payload: dict, user=Depends(get_current_user)):
+    content = payload.get("content", "").strip()
+    if not content:
+        raise HTTPException(400, "内容不能为空")
+    async with async_session() as session:
+        post = Post(author_id=user.id, content=content, images=json.dumps(payload.get("images", [])))
+        session.add(post)
+        await session.commit()
+        await session.refresh(post)
+        return {"id": post.id, "author_id": user.id, "author_name": user.nickname, "content": content,
+                "images": json.loads(post.images) if post.images else [], "likes_count": 0,
+                "comments_count": 0, "created_at": post.created_at.isoformat()}
+
+@app.post("/api/v1/posts/{post_id}/like")
+async def toggle_post_like(post_id: int, user=Depends(get_current_user)):
+    async with async_session() as session:
+        post = await session.get(Post, post_id)
+        if not post:
+            raise HTTPException(404, "动态不存在")
+        result = await session.execute(select(PostLike).where(
+            PostLike.post_id == post_id, PostLike.user_id == user.id))
+        like = result.scalar_one_or_none()
+        if like:
+            await session.delete(like)
+            post.likes_count = max(0, (post.likes_count or 0) - 1)
+            liked = False
+        else:
+            session.add(PostLike(post_id=post_id, user_id=user.id))
+            post.likes_count = (post.likes_count or 0) + 1
+            liked = True
+        await session.commit()
+        return {"liked": liked, "likes_count": post.likes_count}
+
+@app.get("/api/v1/posts/{post_id}/comments")
+async def list_post_comments(post_id: int):
+    async with async_session() as session:
+        result = await session.execute(select(PostComment).where(PostComment.post_id == post_id).order_by(PostComment.created_at.asc()))
+        comments = result.scalars().all()
+        output = []
+        for c in comments:
+            author = await session.get(User, c.author_id)
+            output.append({"id": c.id, "post_id": post_id, "author_id": c.author_id,
+                           "author_name": author.nickname if author else "用户", "content": c.content,
+                           "created_at": c.created_at.isoformat()})
+        return output
+
+@app.post("/api/v1/posts/{post_id}/comments")
+async def create_post_comment(post_id: int, payload: dict, user=Depends(get_current_user)):
+    content = payload.get("content", "").strip()
+    if not content:
+        raise HTTPException(400, "评论内容不能为空")
+    async with async_session() as session:
+        post = await session.get(Post, post_id)
+        if not post:
+            raise HTTPException(404, "动态不存在")
+        comment = PostComment(post_id=post_id, author_id=user.id, content=content)
+        session.add(comment)
+        post.comments_count = (post.comments_count or 0) + 1
+        await session.commit()
+        await session.refresh(comment)
+        return {"id": comment.id, "post_id": post_id, "author_id": user.id, "author_name": user.nickname,
+                "content": content, "created_at": comment.created_at.isoformat()}
+
+# ========== 任务 API ==========
+@app.get("/api/v1/tasks")
+async def list_tasks(user=Depends(get_current_user), scope: str = "all"):
+    async with async_session() as session:
+        query = select(Task)
+        if scope == "assigned":
+            query = query.where(Task.assignee_id == user.id)
+        elif scope == "created":
+            query = query.where(Task.creator_id == user.id)
+        result = await session.execute(query.order_by(Task.created_at.desc()))
+        tasks = result.scalars().all()
+        return [{"id": t.id, "conversation_id": t.conversation_id, "creator_id": t.creator_id,
+                 "assignee_id": t.assignee_id, "title": t.title, "description": t.description,
+                 "status": t.status, "priority": t.priority, "due_date": t.due_date.isoformat() if t.due_date else None,
+                 "created_at": t.created_at.isoformat()} for t in tasks]
+
+@app.post("/api/v1/tasks")
+async def create_task(payload: dict, user=Depends(get_current_user)):
+    title = payload.get("title", "").strip()
+    if not title:
+        raise HTTPException(400, "任务标题不能为空")
+    async with async_session() as session:
+        task = Task(conversation_id=payload.get("conversation_id"), creator_id=user.id,
+                    assignee_id=payload.get("assignee_id"), title=title,
+                    description=payload.get("description", ""), priority=payload.get("priority", "normal"))
+        session.add(task)
+        await session.commit()
+        await session.refresh(task)
+        return {"id": task.id, "title": task.title, "status": task.status, "created_at": task.created_at.isoformat()}
+
+@app.patch("/api/v1/tasks/{task_id}")
+async def update_task(task_id: int, payload: dict, user=Depends(get_current_user)):
+    async with async_session() as session:
+        task = await session.get(Task, task_id)
+        if not task:
+            raise HTTPException(404, "任务不存在")
+        for field in ["title", "description", "status", "priority", "assignee_id"]:
+            if field in payload:
+                setattr(task, field, payload[field])
+        await session.commit()
+        return {"ok": True}
+
+# ========== 公告 API ==========
+@app.get("/api/v1/announcements")
+async def list_announcements(conversation_id: int = None):
+    async with async_session() as session:
+        query = select(Announcement).where(Announcement.is_global == True)
+        if conversation_id:
+            query = select(Announcement).where(Announcement.conversation_id == conversation_id)
+        result = await session.execute(query.order_by(Announcement.created_at.desc()))
+        anns = result.scalars().all()
+        return [{"id": a.id, "conversation_id": a.conversation_id, "title": a.title, "content": a.content,
+                 "is_global": a.is_global, "created_at": a.created_at.isoformat()} for a in anns]
+
+@app.post("/api/v1/announcements")
+async def create_announcement(payload: dict, user=Depends(get_current_user)):
+    async with async_session() as session:
+        ann = Announcement(conversation_id=payload.get("conversation_id"), author_id=user.id,
+                           title=payload.get("title", ""), content=payload.get("content", ""),
+                           is_global=payload.get("is_global", False))
+        session.add(ann)
+        await session.commit()
+        await session.refresh(ann)
+        return {"id": ann.id, "title": ann.title, "created_at": ann.created_at.isoformat()}
+
+# ========== 收藏/精华 API ==========
+@app.get("/api/v1/messages/bookmarks")
+async def list_bookmarks(user=Depends(get_current_user)):
+    async with async_session() as session:
+        result = await session.execute(select(Bookmark).where(Bookmark.user_id == user.id).order_by(Bookmark.created_at.desc()))
+        bookmarks = result.scalars().all()
+        output = []
+        for b in bookmarks:
+            msg = await session.get(Message, b.message_id)
+            if msg:
+                sender = await session.get(User, msg.sender_id)
+                output.append({"id": b.id, "message_id": b.message_id, "conversation_id": b.conversation_id,
+                               "sender_name": sender.nickname if sender else "用户", "content": msg.content,
+                               "created_at": msg.created_at.isoformat(), "bookmarked_at": b.created_at.isoformat()})
+        return output
+
+@app.post("/api/v1/messages/{message_id}/bookmark")
+async def toggle_bookmark(message_id: int, user=Depends(get_current_user)):
+    async with async_session() as session:
+        msg = await session.get(Message, message_id)
+        if not msg:
+            raise HTTPException(404, "消息不存在")
+        result = await session.execute(select(Bookmark).where(
+            Bookmark.user_id == user.id, Bookmark.message_id == message_id))
+        bookmark = result.scalar_one_or_none()
+        if bookmark:
+            await session.delete(bookmark)
+            bookmarked = False
+        else:
+            session.add(Bookmark(user_id=user.id, message_id=message_id, conversation_id=msg.conversation_id))
+            bookmarked = True
+        await session.commit()
+        return {"bookmarked": bookmarked}
+
+# ========== 图片上传 API ==========
+@app.post("/api/v1/uploads/image")
+async def upload_image(file: UploadFile = File(...), user=Depends(get_current_user)):
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(400, "只支持图片文件")
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(400, "图片不能超过5MB")
+    ext = file.filename.split(".")[-1] if "." in file.filename else "png"
+    filename = f"{secrets.token_hex(16)}.{ext}"
+    upload_dir = os.path.join(os.path.dirname(__file__), "uploads")
+    os.makedirs(upload_dir, exist_ok=True)
+    filepath = os.path.join(upload_dir, filename)
+    with open(filepath, "wb") as f:
+        f.write(content)
+    return {"url": f"/uploads/{filename}", "filename": filename, "size": len(content)}
+
+@app.get("/uploads/{filename}")
+async def serve_upload(filename: str):
+    filepath = os.path.join(os.path.dirname(__file__), "uploads", filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(404, "文件不存在")
+    return FileResponse(filepath)
+
+# ========== 主页数据 API ==========
+@app.get("/api/v1/home")
+async def home_data(seed: int = 0, user=Depends(get_current_user)):
+    async with async_session() as session:
+        online = await session.execute(select(func.count(User.id)).where(User.status == "online"))
+        total_users = await session.execute(select(func.count(User.id)))
+        total_msgs = await session.execute(select(func.count(Message.id)))
+        total_bots = await session.execute(select(func.count(Bot.id)).where(Bot.is_public == True))
+        hot_groups = await session.execute(select(Conversation).where(Conversation.type == "group").order_by(Conversation.member_count.desc()).limit(6))
+        groups = []
+        for g in hot_groups.scalars().all():
+            groups.append({"id": g.id, "title": g.title, "member_count": g.member_count or 0, "joined": False})
+        return {"seed": seed, "online_count": online.scalar() or 0, "total_users": total_users.scalar() or 0,
+                "total_messages": total_msgs.scalar() or 0, "total_bots": total_bots.scalar() or 0,
+                "hot_groups": groups, "recommended_bots": [], "activities": []}
 
 if __name__ == "__main__":
     import uvicorn
