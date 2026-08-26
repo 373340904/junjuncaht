@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base, relationship
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, select, update, delete, func
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, select, update, delete, func, Float
 from passlib.context import CryptContext
 from jose import jwt, JWTError
 
