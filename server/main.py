@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Header, UploadFile, File
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Header, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
@@ -451,9 +451,24 @@ async def admin_reset(req: ResetReq):
         await session.commit()
     return {"status": "ok", "message": "数据库已重置，所有数据已清空"}
 
+# ========== 限流 ==========
+_register_attempts: Dict[str, list] = {}
+_login_attempts: Dict[str, list] = {}
+
+def _check_rate_limit(store: Dict[str, list], key: str, max_attempts: int, window_seconds: int):
+    now = time.time()
+    if key not in store:
+        store[key] = []
+    store[key] = [t for t in store[key] if now - t < window_seconds]
+    if len(store[key]) >= max_attempts:
+        raise HTTPException(429, "操作太频繁，请稍后再试")
+    store[key].append(now)
+
 # ========== 认证 ==========
 @app.post("/api/v1/auth/register")
-async def register(req: RegisterReq):
+async def register(req: RegisterReq, request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    _check_rate_limit(_register_attempts, client_ip, 1, 60)  # 每IP每分钟最多注册1个
     username = req.username.strip().lower()
     if len(username) < 3 or len(username) > 50:
         raise HTTPException(400, "用户名长度3-50")
@@ -483,7 +498,9 @@ async def register(req: RegisterReq):
         return {"access_token": token, "token_type": "bearer", "user": user_to_dict(user)}
 
 @app.post("/api/v1/auth/login")
-async def login(req: LoginReq):
+async def login(req: LoginReq, request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    _check_rate_limit(_login_attempts, client_ip, 10, 60)  # 每IP每分钟最多登录10次
     async with async_session() as session:
         result = await session.execute(
             select(User).where(User.username == req.username_or_email.strip().lower())
