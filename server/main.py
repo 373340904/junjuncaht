@@ -407,7 +407,7 @@ async def lifespan(app: FastAPI):
         if not official:
             official = Conversation(
                 type="group", title=OFFICIAL_GROUP_TITLE,
-                owner_id=1, is_official=True,
+                owner_id=2, is_official=True,
                 announcement="欢迎来到 JunjunChat 官方群！这里是大家交流的地方。"
             )
             session.add(official)
@@ -416,20 +416,20 @@ async def lifespan(app: FastAPI):
             # 设置群主角色
             owner_member = await session.execute(select(ConversationMember).where(
                 ConversationMember.conversation_id == official.id,
-                ConversationMember.user_id == 1
+                ConversationMember.user_id == 2
             ))
             if not owner_member.scalar_one_or_none():
-                session.add(ConversationMember(conversation_id=official.id, user_id=1, role="owner"))
+                session.add(ConversationMember(conversation_id=official.id, user_id=2, role="owner"))
                 await session.commit()
         else:
-            # 确保官方群群主是 ID=1
-            if official.owner_id != 1:
-                official.owner_id = 1
+            # 确保官方群群主是 ID=2
+            if official.owner_id != 2:
+                official.owner_id = 2
                 await session.commit()
-            # 确保 ID=1 的角色是 owner
+            # 确保 ID=2 的角色是 owner
             owner_member = await session.execute(select(ConversationMember).where(
                 ConversationMember.conversation_id == official.id,
-                ConversationMember.user_id == 1
+                ConversationMember.user_id == 2
             ))
             om = owner_member.scalar_one_or_none()
             if om:
@@ -437,7 +437,16 @@ async def lifespan(app: FastAPI):
                     om.role = "owner"
                     await session.commit()
             else:
-                session.add(ConversationMember(conversation_id=official.id, user_id=1, role="owner"))
+                session.add(ConversationMember(conversation_id=official.id, user_id=2, role="owner"))
+                await session.commit()
+            # 把 ID=1 的角色改成 member（如果之前是 owner）
+            member1 = await session.execute(select(ConversationMember).where(
+                ConversationMember.conversation_id == official.id,
+                ConversationMember.user_id == 1
+            ))
+            m1 = member1.scalar_one_or_none()
+            if m1 and m1.role == "owner":
+                m1.role = "member"
                 await session.commit()
     yield
 
@@ -588,6 +597,52 @@ async def admin_create_announcement(req: AnnouncementReq):
         await session.commit()
         await session.refresh(ann)
         return {"id": ann.id, "title": ann.title, "content": ann.content, "created_at": ann.created_at.isoformat()}
+
+# ========== Junjun 专属管理 API（密码验证）==========
+@app.get("/api/v1/admin/stats")
+async def admin_stats_password(password: str = ""):
+    if password != ADMIN_PANEL_PASSWORD:
+        raise HTTPException(403, "密码错误")
+    async with async_session() as session:
+        user_count = (await session.execute(select(func.count(User.id)))).scalar()
+        msg_count = (await session.execute(select(func.count(Message.id)))).scalar()
+        group_count = (await session.execute(select(func.count(Conversation.id)).where(Conversation.type == "group"))).scalar()
+        bot_count = (await session.execute(select(func.count(Bot.id)))).scalar()
+        online_count = (await session.execute(select(func.count(User.id)).where(User.status == "online"))).scalar()
+        official_count = (await session.execute(select(func.count(Conversation.id)).where(Conversation.is_official == True))).scalar()
+        online_bots = (await session.execute(select(func.count(Bot.id)).where(Bot.is_online == True))).scalar()
+        return {
+            "total_users": user_count, "total_messages": msg_count,
+            "total_groups": group_count, "total_bots": bot_count,
+            "online_users": online_count, "official_groups": official_count,
+            "online_bots": online_bots, "today_messages": msg_count
+        }
+
+@app.get("/api/v1/admin/groups")
+async def admin_list_groups(password: str = ""):
+    if password != ADMIN_PANEL_PASSWORD:
+        raise HTTPException(403, "密码错误")
+    async with async_session() as session:
+        result = await session.execute(select(Conversation).where(Conversation.type == "group").order_by(Conversation.id.desc()).limit(100))
+        groups = result.scalars().all()
+        output = []
+        for g in groups:
+            member_count = (await session.execute(select(func.count(ConversationMember.id)).where(ConversationMember.conversation_id == g.id))).scalar()
+            output.append({
+                "id": g.id, "title": g.title, "owner_id": g.owner_id,
+                "is_official": g.is_official, "member_count": member_count,
+                "created_at": g.created_at.isoformat() if g.created_at else None
+            })
+        return output
+
+@app.get("/api/v1/admin/bots")
+async def admin_list_bots(password: str = ""):
+    if password != ADMIN_PANEL_PASSWORD:
+        raise HTTPException(403, "密码错误")
+    async with async_session() as session:
+        result = await session.execute(select(Bot).order_by(Bot.id.desc()).limit(100))
+        bots = result.scalars().all()
+        return [{"id": b.id, "name": b.name, "creator_id": b.creator_id, "is_online": b.is_online, "bot_key": b.bot_key, "created_at": b.created_at.isoformat() if b.created_at else None} for b in bots]
 
 @app.get("/api/v1/announcements")
 async def public_announcements():
