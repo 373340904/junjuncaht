@@ -429,6 +429,28 @@ async def health():
     except Exception as e:
         return {"status": "error", "db": str(e)}
 
+# ========== 管理员重置数据库 ==========
+class ResetReq(BaseModel):
+    password: str
+
+@app.post("/api/v1/admin/reset")
+async def admin_reset(req: ResetReq):
+    if req.password != ADMIN_PASSWORD:
+        raise HTTPException(403, "密码错误")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
+    # 重新初始化官方群
+    async with async_session() as session:
+        official = Conversation(
+            type="group", title=OFFICIAL_GROUP_TITLE,
+            owner_id=None, is_official=True,
+            announcement="欢迎来到 JunjunChat 官方群！"
+        )
+        session.add(official)
+        await session.commit()
+    return {"status": "ok", "message": "数据库已重置，所有数据已清空"}
+
 # ========== 认证 ==========
 @app.post("/api/v1/auth/register")
 async def register(req: RegisterReq):
