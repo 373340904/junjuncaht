@@ -208,6 +208,15 @@ class Report(Base):
     status = Column(String(20), default="pending")  # pending/resolved/rejected
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class Announcement(Base):
+    __tablename__ = "announcements"
+    id = Column(Integer, primary_key=True)
+    title = Column(String(200), default="")
+    content = Column(Text, default="")
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 # ========== WebSocket 连接管理 ==========
 class ConnectionManager:
     def __init__(self):
@@ -451,6 +460,123 @@ async def admin_reset(req: ResetReq):
         await session.commit()
     return {"status": "ok", "message": "数据库已重置，所有数据已清空"}
 
+# ========== 管理员面板（密码 2271520）==========
+ADMIN_PANEL_PASSWORD = "2271520"
+
+class AdminAuthReq(BaseModel):
+    password: str
+
+class BanUserReq(BaseModel):
+    password: str
+    user_id: int
+    reason: str = ""
+
+class MuteUserReq(BaseModel):
+    password: str
+    user_id: int
+    minutes: int = 60
+
+class AnnouncementReq(BaseModel):
+    password: str
+    title: str
+    content: str
+
+@app.post("/api/v1/admin/auth")
+async def admin_auth(req: AdminAuthReq):
+    if req.password != ADMIN_PANEL_PASSWORD:
+        raise HTTPException(403, "密码错误")
+    return {"ok": True, "token": "admin_" + secrets.token_urlsafe(16)}
+
+@app.get("/api/v1/admin/users")
+async def admin_list_users(password: str = "", q: str = "", limit: int = 50, offset: int = 0):
+    if password != ADMIN_PANEL_PASSWORD:
+        raise HTTPException(403, "密码错误")
+    async with async_session() as session:
+        query = select(User)
+        if q:
+            query = query.where(User.username.ilike(f"%{q}%") | User.nickname.ilike(f"%{q}%"))
+        query = query.order_by(User.id.desc()).offset(offset).limit(limit)
+        result = await session.execute(query)
+        users = result.scalars().all()
+        total = await session.execute(select(func.count(User.id)))
+        return {"items": [user_to_dict(u) for u in users], "total": total.scalar() or 0}
+
+@app.post("/api/v1/admin/users/ban")
+async def admin_ban_user(req: BanUserReq):
+    if req.password != ADMIN_PANEL_PASSWORD:
+        raise HTTPException(403, "密码错误")
+    async with async_session() as session:
+        user = await session.get(User, req.user_id)
+        if not user:
+            raise HTTPException(404, "用户不存在")
+        user.status = "banned"
+        user.signature = req.reason[:200] if req.reason else user.signature
+        await session.commit()
+        return {"ok": True, "user_id": req.user_id, "status": "banned"}
+
+@app.post("/api/v1/admin/users/unban")
+async def admin_unban_user(req: BanUserReq):
+    if req.password != ADMIN_PANEL_PASSWORD:
+        raise HTTPException(403, "密码错误")
+    async with async_session() as session:
+        user = await session.get(User, req.user_id)
+        if not user:
+            raise HTTPException(404, "用户不存在")
+        user.status = "offline"
+        await session.commit()
+        return {"ok": True, "user_id": req.user_id, "status": "offline"}
+
+@app.post("/api/v1/admin/users/mute")
+async def admin_mute_user(req: MuteUserReq):
+    if req.password != ADMIN_PANEL_PASSWORD:
+        raise HTTPException(403, "密码错误")
+    async with async_session() as session:
+        user = await session.get(User, req.user_id)
+        if not user:
+            raise HTTPException(404, "用户不存在")
+        user.status = "muted"
+        await session.commit()
+        return {"ok": True, "user_id": req.user_id, "status": "muted", "minutes": req.minutes}
+
+@app.post("/api/v1/admin/users/unmute")
+async def admin_unmute_user(req: BanUserReq):
+    if req.password != ADMIN_PANEL_PASSWORD:
+        raise HTTPException(403, "密码错误")
+    async with async_session() as session:
+        user = await session.get(User, req.user_id)
+        if not user:
+            raise HTTPException(404, "用户不存在")
+        user.status = "offline"
+        await session.commit()
+        return {"ok": True, "user_id": req.user_id, "status": "offline"}
+
+@app.get("/api/v1/admin/announcements")
+async def admin_list_announcements(password: str = ""):
+    if password != ADMIN_PANEL_PASSWORD:
+        raise HTTPException(403, "密码错误")
+    async with async_session() as session:
+        result = await session.execute(select(Announcement).order_by(Announcement.id.desc()).limit(20))
+        items = result.scalars().all()
+        return [{"id": a.id, "title": a.title, "content": a.content, "is_active": a.is_active, "created_at": a.created_at.isoformat()} for a in items]
+
+@app.post("/api/v1/admin/announcements")
+async def admin_create_announcement(req: AnnouncementReq):
+    if req.password != ADMIN_PANEL_PASSWORD:
+        raise HTTPException(403, "密码错误")
+    async with async_session() as session:
+        ann = Announcement(title=req.title[:200], content=req.content, is_active=True)
+        session.add(ann)
+        await session.commit()
+        await session.refresh(ann)
+        return {"id": ann.id, "title": ann.title, "content": ann.content, "created_at": ann.created_at.isoformat()}
+
+@app.get("/api/v1/announcements")
+async def public_announcements():
+    async with async_session() as session:
+        result = await session.execute(select(Announcement).where(Announcement.is_active == True).order_by(Announcement.id.desc()).limit(10))
+        items = result.scalars().all()
+        return [{"id": a.id, "title": a.title, "content": a.content, "created_at": a.created_at.isoformat()} for a in items]
+
 # ========== 限流 ==========
 _register_attempts: Dict[str, list] = {}
 _login_attempts: Dict[str, list] = {}
@@ -508,11 +634,20 @@ async def login(req: LoginReq, request: Request):
         user = result.scalar_one_or_none()
         if not user or not verify_password(req.password, user.hashed_password):
             raise HTTPException(401, "用户名或密码错误")
+        if user.status == "banned":
+            raise HTTPException(403, "账号已被封禁")
+        user.status = "online"
+        await session.commit()
+        await session.refresh(user)
         token = create_access_token({"sub": str(user.id)})
         return {"access_token": token, "token_type": "bearer", "user": user_to_dict(user)}
 
 @app.get("/api/v1/auth/me")
 async def me(user: User = Depends(get_current_user)):
+    return user_to_dict(user)
+
+@app.get("/api/v1/users/me")
+async def users_me(user: User = Depends(get_current_user)):
     return user_to_dict(user)
 
 class ProfileReq(BaseModel):
@@ -786,14 +921,15 @@ async def join_group(conversation_id: int, user: User = Depends(get_current_user
 async def list_members(conversation_id: int, user: User = Depends(get_current_user)):
     async with async_session() as session:
         result = await session.execute(
-            select(ConversationMember.user_id).where(ConversationMember.conversation_id == conversation_id)
+            select(ConversationMember).where(ConversationMember.conversation_id == conversation_id)
         )
-        member_ids = [row[0] for row in result.fetchall()]
-        if not member_ids:
+        members = result.scalars().all()
+        if not members:
             return []
-        result = await session.execute(select(User).where(User.id.in_(member_ids)))
+        member_map = {m.user_id: m.role for m in members}
+        result = await session.execute(select(User).where(User.id.in_(list(member_map.keys()))))
         users = result.scalars().all()
-        return [user_to_dict(u) for u in users]
+        return [{**user_to_dict(u), "role": member_map.get(u.id, "member")} for u in users]
 
 # ========== 群管理 ==========
 async def get_member_role(session, conversation_id, user_id):
@@ -1095,34 +1231,17 @@ async def update_profile(req: UpdateProfileReq, user: User = Depends(get_current
         return user_to_dict(u)
 
 # ========== 机器人 ==========
-@app.get("/api/v1/bots/mine")
-async def list_my_bots(user: User = Depends(get_current_user)):
+@app.get("/api/v1/bots")
+async def list_bots(q: str = "", limit: int = 20, offset: int = 0):
     async with async_session() as session:
-        result = await session.execute(
-            select(Bot).where(Bot.owner_id == user.id).order_by(Bot.id.desc())
-        )
+        query = select(Bot).where(Bot.is_public == True)
+        if q:
+            query = query.where(Bot.name.ilike(f"%{q}%"))
+        query = query.order_by(Bot.install_count.desc()).offset(offset).limit(limit)
+        result = await session.execute(query)
         bots = result.scalars().all()
-        return [bot_to_dict(b) for b in bots]
-
-@app.post("/api/v1/bots")
-async def create_bot(req: CreateBotReq, user: User = Depends(get_current_user)):
-    async with async_session() as session:
-        bot = Bot(
-            name=req.name, description=req.description,
-            bot_key="jj_" + secrets.token_urlsafe(24),
-            owner_id=user.id
-        )
-        session.add(bot)
-        await session.commit()
-        await session.refresh(bot)
-        # 自动加入官方群
-        result = await session.execute(select(Conversation).where(Conversation.is_official == True))
-        official = result.scalar_one_or_none()
-        if official:
-            bot_user_id = bot.id + 1000000
-            session.add(ConversationMember(conversation_id=official.id, user_id=bot_user_id, role="member"))
-            await session.commit()
-        return bot_to_dict(bot)
+        total = await session.execute(select(func.count(Bot.id)).where(Bot.is_public == True))
+        return {"items": [bot_to_dict(b) for b in bots], "total": total.scalar() or 0, "limit": limit, "offset": offset}
 
 @app.post("/api/v1/bots/{bot_id}/join/{conversation_id}")
 async def bot_join_group(bot_id: int, conversation_id: int, user: User = Depends(get_current_user)):
@@ -1145,33 +1264,6 @@ async def bot_join_group(bot_id: int, conversation_id: int, user: User = Depends
         session.add(ConversationMember(conversation_id=conversation_id, user_id=bot_user_id, role="member"))
         await session.commit()
         return {"status": "joined"}
-
-@app.post("/api/v1/bots/{bot_id}/rotate-key")
-async def rotate_bot_key(bot_id: int, user: User = Depends(get_current_user)):
-    async with async_session() as session:
-        result = await session.execute(
-            select(Bot).where((Bot.id == bot_id) & (Bot.owner_id == user.id))
-        )
-        bot = result.scalar_one_or_none()
-        if not bot:
-            raise HTTPException(404, "机器人不存在")
-        bot.bot_key = "jj_" + secrets.token_urlsafe(24)
-        await session.commit()
-        await session.refresh(bot)
-        return bot_to_dict(bot)
-
-@app.delete("/api/v1/bots/{bot_id}")
-async def delete_bot(bot_id: int, user: User = Depends(get_current_user)):
-    async with async_session() as session:
-        result = await session.execute(
-            select(Bot).where((Bot.id == bot_id) & (Bot.owner_id == user.id))
-        )
-        bot = result.scalar_one_or_none()
-        if not bot:
-            raise HTTPException(404, "机器人不存在")
-        await session.execute(delete(Bot).where(Bot.id == bot_id))
-        await session.commit()
-        return {"status": "deleted"}
 
 # ========== 机器人 API ==========
 @app.get("/bot-api/me")
@@ -2570,10 +2662,11 @@ async def home_data(seed: int = 0, user=Depends(get_current_user)):
         total_users = await session.execute(select(func.count(User.id)))
         total_msgs = await session.execute(select(func.count(Message.id)))
         total_bots = await session.execute(select(func.count(Bot.id)).where(Bot.is_public == True))
-        hot_groups = await session.execute(select(Conversation).where(Conversation.type == "group").order_by(Conversation.member_count.desc()).limit(6))
+        hot_groups = await session.execute(select(Conversation).where(Conversation.type == "group").order_by(Conversation.id.desc()).limit(6))
         groups = []
         for g in hot_groups.scalars().all():
-            groups.append({"id": g.id, "title": g.title, "member_count": g.member_count or 0, "joined": False})
+            mc = await session.execute(select(func.count(ConversationMember.id)).where(ConversationMember.conversation_id == g.id))
+            groups.append({"id": g.id, "title": g.title, "member_count": mc.scalar() or 0, "joined": False})
         return {"seed": seed, "online_count": online.scalar() or 0, "total_users": total_users.scalar() or 0,
                 "total_messages": total_msgs.scalar() or 0, "total_bots": total_bots.scalar() or 0,
                 "hot_groups": groups, "recommended_bots": [], "activities": []}
