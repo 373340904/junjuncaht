@@ -373,6 +373,33 @@ class BotSendMsgReq(BaseModel):
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    # 清理重复的群成员（保留id最小的）
+    try:
+        async with async_session() as session:
+            result = await session.execute(
+                select(ConversationMember.conversation_id, ConversationMember.user_id, func.min(ConversationMember.id).label("min_id"))
+                .group_by(ConversationMember.conversation_id, ConversationMember.user_id)
+                .having(func.count(ConversationMember.id) > 1)
+            )
+            duplicates = result.fetchall()
+            for conv_id, user_id, min_id in duplicates:
+                await session.execute(
+                    delete(ConversationMember).where(
+                        (ConversationMember.conversation_id == conv_id) &
+                        (ConversationMember.user_id == user_id) &
+                        (ConversationMember.id != min_id)
+                    )
+                )
+            await session.commit()
+            # 创建唯一索引（如果不存在）
+            try:
+                from sqlalchemy import text
+                await session.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_conv_member_unique ON conversation_members(conversation_id, user_id)"))
+                await session.commit()
+            except:
+                pass
+    except Exception as e:
+        print(f"清理重复成员失败: {e}")
     # 初始化官方群
     async with async_session() as session:
         result = await session.execute(select(Conversation).where(Conversation.is_official == True))
