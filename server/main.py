@@ -426,6 +426,19 @@ async def lifespan(app: FastAPI):
             if official.owner_id != 1:
                 official.owner_id = 1
                 await session.commit()
+            # 确保 ID=1 的角色是 owner
+            owner_member = await session.execute(select(ConversationMember).where(
+                ConversationMember.conversation_id == official.id,
+                ConversationMember.user_id == 1
+            ))
+            om = owner_member.scalar_one_or_none()
+            if om:
+                if om.role != "owner":
+                    om.role = "owner"
+                    await session.commit()
+            else:
+                session.add(ConversationMember(conversation_id=official.id, user_id=1, role="owner"))
+                await session.commit()
     yield
 
 app = FastAPI(title="JunjunChat API", lifespan=lifespan)
