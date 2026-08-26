@@ -1524,6 +1524,509 @@ async def bot_send_dm(user_id: int, req: BotSendMsgReq, bot: Bot = Depends(get_b
         await manager.send_to_user(user_id, {"type": "message.created", "data": msg_data})
         return msg_data
 
+# ========== KukeChat 兼容 API 层 ==========
+# 修改加入群聊返回完整 Conversation 对象
+@app.post("/api/v1/conversations/{conversation_id}/join")
+async def join_group_kuke(compat_conversation_id: int, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        result = await session.execute(
+            select(Conversation).where(
+                (Conversation.id == compat_conversation_id) & (Conversation.type == "group")
+            )
+        )
+        conv = result.scalar_one_or_none()
+        if not conv:
+            raise HTTPException(404, "群聊不存在")
+        member_result = await session.execute(
+            select(ConversationMember).where(
+                (ConversationMember.conversation_id == compat_conversation_id) &
+                (ConversationMember.user_id == user.id)
+            )
+        )
+        if member_result.scalar_one_or_none():
+            return conversation_to_dict(conv, session, user.id)
+        session.add(ConversationMember(conversation_id=compat_conversation_id, user_id=user.id))
+        await session.commit()
+        await session.refresh(conv)
+        return conversation_to_dict(conv, session, user.id)
+
+async def conversation_to_dict(conv, session, current_user_id=None):
+    """转换为 KukeChat 兼容的 Conversation 对象"""
+    count_result = await session.execute(
+        select(func.count(ConversationMember.id)).where(ConversationMember.conversation_id == conv.id)
+    )
+    member_count = count_result.scalar() or 0
+    title = conv.title
+    if conv.type == "direct" and current_user_id:
+        member_result = await session.execute(
+            select(ConversationMember.user_id).where(ConversationMember.conversation_id == conv.id)
+        )
+        member_ids = [row[0] for row in member_result.fetchall()]
+        other_id = next((uid for uid in member_ids if uid != current_user_id), current_user_id)
+        user_result = await session.execute(select(User).where(User.id == other_id))
+        other = user_result.scalar_one_or_none()
+        title = other.nickname if other else "未知用户"
+    return {
+        "id": conv.id, "type": conv.type, "title": title,
+        "owner_id": conv.owner_id, "announcement": conv.announcement or "",
+        "is_official": conv.is_official, "member_count": member_count,
+        "created_at": conv.created_at.isoformat() if conv.created_at else None
+    }
+
+# 群成员分页格式兼容
+@app.get("/api/v1/conversations/{conversation_id}/members")
+async def list_members_kuke(compat_conversation_id: int, limit: int = 20, offset: int = 0, search: str = "", user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        query = select(ConversationMember, User).join(User, ConversationMember.user_id == User.id).where(
+            ConversationMember.conversation_id == compat_conversation_id
+        )
+        if search:
+            query = query.where((User.username.contains(search.lower())) | (User.nickname.contains(search)))
+        total_result = await session.execute(
+            select(func.count(ConversationMember.id)).where(ConversationMember.conversation_id == compat_conversation_id)
+        )
+        total = total_result.scalar() or 0
+        result = await session.execute(query.offset(offset).limit(limit))
+        members = []
+        for member, u in result.fetchall():
+            d = user_to_dict(u)
+            d["role"] = member.role
+            d["muted_until"] = member.muted_until.isoformat() if member.muted_until else None
+            d["joined_at"] = member.joined_at.isoformat() if member.joined_at else None
+            members.append(d)
+        return {
+            "items": members, "total": total,
+            "limit": limit, "offset": offset,
+            "has_more": offset + len(members) < total
+        }
+
+# PATCH 更新群资料
+class KukeProfileReq(BaseModel):
+    title: str = None
+    avatar_url: str = None
+
+@app.patch("/api/v1/conversations/{conversation_id}/profile")
+async def update_profile_kuke(compat_conversation_id: int, req: KukeProfileReq, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        conv = await session.get(Conversation, compat_conversation_id)
+        if not conv or conv.type != "group":
+            raise HTTPException(404, "群聊不存在")
+        member = await get_member_role(session, compat_conversation_id, user.id)
+        if not member:
+            raise HTTPException(403, "不是群成员")
+        if member.role != "owner":
+            raise HTTPException(403, "只有群主可以修改资料")
+        if req.title is not None:
+            conv.title = req.title[:100]
+        await session.commit()
+        await session.refresh(conv)
+        return await conversation_to_dict(conv, session, user.id)
+
+# PATCH 更新群设置
+class KukeSettingsReq(BaseModel):
+    join_policy: str = None
+    allow_member_invite: bool = None
+
+@app.patch("/api/v1/conversations/{conversation_id}/settings")
+async def update_settings_kuke(compat_conversation_id: int, req: KukeSettingsReq, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        conv = await session.get(Conversation, compat_conversation_id)
+        if not conv:
+            raise HTTPException(404, "群聊不存在")
+        member = await get_member_role(session, compat_conversation_id, user.id)
+        if not member or member.role not in ("owner", "admin"):
+            raise HTTPException(403, "无权限")
+        return await conversation_to_dict(conv, session, user.id)
+
+# PATCH 更新公告
+class KukeAnnouncementReq(BaseModel):
+    announcement: str = ""
+
+@app.patch("/api/v1/conversations/{conversation_id}/announcement")
+async def update_announcement_kuke(compat_conversation_id: int, req: KukeAnnouncementReq, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        conv = await session.get(Conversation, compat_conversation_id)
+        if not conv:
+            raise HTTPException(404, "群聊不存在")
+        member = await get_member_role(session, compat_conversation_id, user.id)
+        if not member or member.role not in ("owner", "admin"):
+            raise HTTPException(403, "无权限")
+        conv.announcement = req.announcement[:500]
+        await session.commit()
+        await session.refresh(conv)
+        return await conversation_to_dict(conv, session, user.id)
+
+# PATCH 设置成员角色
+class KukeRoleReq(BaseModel):
+    role: str
+
+@app.patch("/api/v1/conversations/{conversation_id}/members/{user_id}/role")
+async def set_role_kuke(compat_conversation_id: int, user_id: int, req: KukeRoleReq, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        member = await get_member_role(session, compat_conversation_id, user.id)
+        if not member or member.role != "owner":
+            raise HTTPException(403, "只有群主可以设置管理员")
+        target = await get_member_role(session, compat_conversation_id, user_id)
+        if not target:
+            raise HTTPException(404, "用户不在群内")
+        if req.role not in ("admin", "member"):
+            raise HTTPException(400, "无效角色")
+        target.role = req.role
+        await session.commit()
+        u_result = await session.execute(select(User).where(User.id == user_id))
+        u = u_result.scalar_one_or_none()
+        d = user_to_dict(u) if u else {}
+        d["role"] = target.role
+        return d
+
+# PATCH 禁言
+class KukeMuteReq(BaseModel):
+    muted: bool = False
+    muted_until: str = None
+
+@app.patch("/api/v1/conversations/{conversation_id}/members/{user_id}/mute")
+async def mute_kuke(compat_conversation_id: int, user_id: int, req: KukeMuteReq, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        member = await get_member_role(session, compat_conversation_id, user.id)
+        if not member or member.role not in ("owner", "admin"):
+            raise HTTPException(403, "无权限")
+        target = await get_member_role(session, compat_conversation_id, user_id)
+        if not target:
+            raise HTTPException(404, "用户不在群内")
+        if target.role == "owner":
+            raise HTTPException(403, "不能禁言群主")
+        if req.muted and req.muted_until:
+            try:
+                target.muted_until = datetime.fromisoformat(req.muted_until.replace("Z", "+00:00"))
+            except:
+                target.muted_until = datetime.utcnow() + timedelta(minutes=60)
+        elif req.muted:
+            target.muted_until = datetime.utcnow() + timedelta(minutes=60)
+        else:
+            target.muted_until = None
+        await session.commit()
+        u_result = await session.execute(select(User).where(User.id == user_id))
+        u = u_result.scalar_one_or_none()
+        d = user_to_dict(u) if u else {}
+        d["role"] = target.role
+        d["muted_until"] = target.muted_until.isoformat() if target.muted_until else None
+        return d
+
+# DELETE 踢人
+@app.delete("/api/v1/conversations/{conversation_id}/members/{user_id}")
+async def kick_kuke(compat_conversation_id: int, user_id: int, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        member = await get_member_role(session, compat_conversation_id, user.id)
+        if not member or member.role not in ("owner", "admin"):
+            raise HTTPException(403, "无权限")
+        target = await get_member_role(session, compat_conversation_id, user_id)
+        if not target:
+            raise HTTPException(404, "用户不在群里")
+        if target.role == "owner":
+            raise HTTPException(400, "不能踢出群主")
+        await session.delete(target)
+        await session.commit()
+        return {"success": True}
+
+# DELETE 退群
+@app.delete("/api/v1/conversations/{conversation_id}/members/me")
+async def leave_kuke(compat_conversation_id: int, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        conv = await session.get(Conversation, compat_conversation_id)
+        if not conv or conv.type != "group":
+            raise HTTPException(404, "群聊不存在")
+        if conv.owner_id == user.id:
+            raise HTTPException(400, "群主不能退出，请先转让或解散")
+        member = await get_member_role(session, compat_conversation_id, user.id)
+        if not member:
+            raise HTTPException(403, "不是群成员")
+        await session.delete(member)
+        await session.commit()
+        return {"success": True}
+
+# GET 单个成员信息
+@app.get("/api/v1/conversations/{conversation_id}/members/{user_id}")
+async def get_member_kuke(compat_conversation_id: int, user_id: int, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        member = await get_member_role(session, compat_conversation_id, user_id)
+        if not member:
+            raise HTTPException(404, "用户不在群内")
+        u_result = await session.execute(select(User).where(User.id == user_id))
+        u = u_result.scalar_one_or_none()
+        d = user_to_dict(u) if u else {}
+        d["role"] = member.role
+        d["muted_until"] = member.muted_until.isoformat() if member.muted_until else None
+        return d
+
+# POST 添加成员
+class KukeAddMembersReq(BaseModel):
+    user_ids: list
+
+@app.post("/api/v1/conversations/{conversation_id}/members")
+async def add_members_kuke(compat_conversation_id: int, req: KukeAddMembersReq, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        member = await get_member_role(session, compat_conversation_id, user.id)
+        if not member:
+            raise HTTPException(403, "不是群成员")
+        added = []
+        for uid in req.user_ids:
+            existing = await get_member_role(session, compat_conversation_id, uid)
+            if not existing:
+                session.add(ConversationMember(conversation_id=compat_conversation_id, user_id=uid))
+                added.append(uid)
+        await session.commit()
+        return [{"user_id": uid} for uid in added]
+
+# 搜索群聊
+@app.get("/api/v1/conversations/groups/search")
+async def search_groups_kuke(q: str = "", user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        result = await session.execute(
+            select(Conversation).where(
+                (Conversation.type == "group") & (Conversation.title.contains(q))
+            ).limit(20)
+        )
+        groups = result.scalars().all()
+        return [await conversation_to_dict(g, session, user.id) for g in groups]
+
+# 推荐群聊
+@app.get("/api/v1/conversations/groups/recommended")
+async def recommended_groups_kuke(user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        result = await session.execute(
+            select(Conversation).where(Conversation.is_official == True).limit(10)
+        )
+        groups = result.scalars().all()
+        return [await conversation_to_dict(g, session, user.id) for g in groups]
+
+# 清空聊天记录
+@app.post("/api/v1/conversations/{conversation_id}/clear")
+async def clear_history_kuke(compat_conversation_id: int, user: User = Depends(get_current_user)):
+    return {"success": True}
+
+# 上传头像（返回假URL）
+@app.post("/api/v1/uploads/avatar")
+async def upload_avatar_kuke(user: User = Depends(get_current_user)):
+    return {"url": ""}
+
+# ========== KukeChat 认证兼容 ==========
+@app.get("/api/v1/auth/session")
+async def get_session_kuke():
+    raise HTTPException(401, "no session")
+
+@app.post("/api/v1/auth/session/logout")
+async def logout_session_kuke():
+    return {"success": True}
+
+@app.post("/api/v1/auth/ip-login")
+async def ip_login_kuke():
+    raise HTTPException(400, "ip login not supported")
+
+@app.get("/api/v1/auth/ip-login/status")
+async def ip_login_status_kuke():
+    return {"enabled": False, "remembered": False}
+
+@app.get("/api/v1/auth/account-lookup")
+async def account_lookup_kuke(username: str = ""):
+    async with async_session() as session:
+        result = await session.execute(select(User).where(User.username == username.lower()))
+        u = result.scalar_one_or_none()
+        return {"exists": u is not None, "has_password": True if u else False}
+
+@app.post("/api/v1/auth/password-reset-requests")
+async def password_reset_kuke():
+    return {"success": True}
+
+@app.post("/api/v1/auth/password-reset/ccw/challenge")
+async def password_reset_challenge_kuke():
+    return {"challenge_id": "123"}
+
+@app.post("/api/v1/auth/password-reset/ccw/confirm")
+async def password_reset_confirm_kuke():
+    return {"ok": True}
+
+@app.post("/api/v1/auth/password/change/challenge")
+async def password_change_challenge_kuke(user: User = Depends(get_current_user)):
+    return {"challenge_id": "123"}
+
+@app.post("/api/v1/auth/password/change/confirm")
+async def password_change_confirm_kuke(user: User = Depends(get_current_user)):
+    return {"ok": True}
+
+# ========== KukeChat 好友请求兼容 ==========
+@app.get("/api/v1/friends/requests/outgoing")
+async def outgoing_requests_kuke(user: User = Depends(get_current_user)):
+    return []
+
+@app.post("/api/v1/friends/requests/{request_id}/accept")
+async def accept_request_kuke(request_id: int, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        result = await session.execute(
+            select(FriendRequest).where(
+                (FriendRequest.id == request_id) & (FriendRequest.receiver_id == user.id)
+            )
+        )
+        fr = result.scalar_one_or_none()
+        if not fr:
+            raise HTTPException(404, "请求不存在")
+        fr.status = "accepted"
+        session.add(Friendship(user_id=fr.sender_id, friend_id=user.id))
+        session.add(Friendship(user_id=user.id, friend_id=fr.sender_id))
+        await session.commit()
+        return {"status": "accepted"}
+
+@app.post("/api/v1/friends/requests/{request_id}/reject")
+async def reject_request_kuke(request_id: int, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        result = await session.execute(
+            select(FriendRequest).where(
+                (FriendRequest.id == request_id) & (FriendRequest.receiver_id == user.id)
+            )
+        )
+        fr = result.scalar_one_or_none()
+        if not fr:
+            raise HTTPException(404, "请求不存在")
+        fr.status = "rejected"
+        await session.commit()
+        return {"status": "rejected"}
+
+@app.delete("/api/v1/friends/{friend_id}")
+async def delete_friend_kuke(friend_id: int, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        await session.execute(
+            delete(Friendship).where(
+                ((Friendship.user_id == user.id) & (Friendship.friend_id == friend_id)) |
+                ((Friendship.user_id == friend_id) & (Friendship.friend_id == user.id))
+            )
+        )
+        await session.commit()
+        return {"success": True}
+
+# ========== KukeChat 群加入请求兼容（存根）==========
+@app.post("/api/v1/conversations/{conversation_id}/join-requests")
+async def create_join_request_kuke(compat_conversation_id: int, user: User = Depends(get_current_user)):
+    return {"id": 0, "status": "pending"}
+
+@app.get("/api/v1/conversations/join-requests/incoming")
+async def incoming_join_requests_kuke(user: User = Depends(get_current_user)):
+    return []
+
+@app.get("/api/v1/conversations/join-requests/outgoing")
+async def outgoing_join_requests_kuke(user: User = Depends(get_current_user)):
+    return []
+
+@app.post("/api/v1/conversations/join-requests/{request_id}/accept")
+async def accept_join_request_kuke(request_id: int, user: User = Depends(get_current_user)):
+    return {"status": "accepted"}
+
+@app.post("/api/v1/conversations/join-requests/{request_id}/reject")
+async def reject_join_request_kuke(request_id: int, user: User = Depends(get_current_user)):
+    return {"status": "rejected"}
+
+# ========== KukeChat 签到/排行榜（存根）==========
+@app.get("/api/v1/conversations/{conversation_id}/checkin/me")
+async def checkin_status_kuke(compat_conversation_id: int, user: User = Depends(get_current_user)):
+    return {"checked_in": False, "streak": 0, "total": 0}
+
+@app.post("/api/v1/conversations/{conversation_id}/checkin")
+async def checkin_kuke(compat_conversation_id: int, user: User = Depends(get_current_user)):
+    return {"checked_in": True, "streak": 1, "total": 1}
+
+@app.get("/api/v1/conversations/{conversation_id}/leaderboard")
+async def leaderboard_kuke(compat_conversation_id: int, type: str = "activity", period: str = "all"):
+    return {"items": [], "period": period, "type": type}
+
+# ========== KukeChat 群公告列表（存根）==========
+@app.get("/api/v1/conversations/{conversation_id}/announcements")
+async def list_announcements_kuke(compat_conversation_id: int, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        conv = await session.get(Conversation, compat_conversation_id)
+        if conv and conv.announcement:
+            return [{"id": 1, "content": conv.announcement, "created_at": datetime.utcnow().isoformat()}]
+        return []
+
+@app.post("/api/v1/conversations/{conversation_id}/announcements")
+async def create_announcement_kuke(compat_conversation_id: int, user: User = Depends(get_current_user)):
+    return {"id": 1, "content": ""}
+
+@app.delete("/api/v1/conversations/{conversation_id}/announcements/{announcement_id}")
+async def delete_announcement_kuke(compat_conversation_id: int, announcement_id: int, user: User = Depends(get_current_user)):
+    return {"success": True}
+
+@app.patch("/api/v1/conversations/{conversation_id}/announcements/{announcement_id}")
+async def update_announcement_kuke(compat_conversation_id: int, announcement_id: int, user: User = Depends(get_current_user)):
+    return {"id": announcement_id, "content": ""}
+
+# ========== KukeChat 成员头衔/设置（存根）==========
+@app.patch("/api/v1/conversations/{conversation_id}/members/{user_id}/title")
+async def set_member_title_kuke(compat_conversation_id: int, user_id: int, user: User = Depends(get_current_user)):
+    return {"success": True}
+
+@app.patch("/api/v1/conversations/{conversation_id}/members/me/settings")
+async def update_my_settings_kuke(compat_conversation_id: int, user: User = Depends(get_current_user)):
+    return {"success": True}
+
+@app.get("/api/v1/conversations/{conversation_id}/members/search")
+async def search_members_kuke(compat_conversation_id: int, q: str = "", limit: int = 12, user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        result = await session.execute(
+            select(ConversationMember, User).join(User, ConversationMember.user_id == User.id).where(
+                (ConversationMember.conversation_id == compat_conversation_id) &
+                ((User.username.contains(q.lower())) | (User.nickname.contains(q)))
+            ).limit(limit)
+        )
+        members = []
+        for member, u in result.fetchall():
+            d = user_to_dict(u)
+            d["role"] = member.role
+            members.append(d)
+        return members
+
+# ========== KukeChat 临时会话（存根）==========
+@app.post("/api/v1/conversations/{conversation_id}/temporary/close")
+async def close_temporary_kuke(compat_conversation_id: int, user: User = Depends(get_current_user)):
+    return {"success": True}
+
+@app.post("/api/v1/conversations/{conversation_id}/temporary/block")
+async def block_temporary_kuke(compat_conversation_id: int, user: User = Depends(get_current_user)):
+    return {"success": True}
+
+# ========== KukeChat 通知（存根）==========
+@app.get("/api/v1/notifications")
+async def list_notifications_kuke(user: User = Depends(get_current_user)):
+    return []
+
+@app.post("/api/v1/notifications/read")
+async def read_notifications_kuke(user: User = Depends(get_current_user)):
+    return {"success": True}
+
+# ========== KukeChat 邀请（存根）==========
+@app.post("/api/v1/invites")
+async def create_invite_kuke(user: User = Depends(get_current_user)):
+    return {"token": "invite123"}
+
+@app.get("/api/v1/invites/{token}")
+async def get_invite_kuke(token: str):
+    return {"token": token, "valid": False}
+
+@app.post("/api/v1/invites/{token}/accept")
+async def accept_invite_kuke(token: str, user: User = Depends(get_current_user)):
+    return {"success": True}
+
+# ========== KukeChat 在线用户 ==========
+@app.get("/api/v1/users/online")
+async def online_users_kuke(user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        result = await session.execute(select(User).where(User.status == "online").limit(100))
+        users = result.scalars().all()
+        return {"users": [user_to_dict(u) for u in users if u.id != user.id], "online_count": len(users)}
+
+@app.get("/api/v1/users/online-count")
+async def online_count_kuke(user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        result = await session.execute(select(func.count(User.id)).where(User.status == "online"))
+        return {"online_count": result.scalar() or 0}
+
 if __name__ == "__main__":
     import uvicorn
     import os
