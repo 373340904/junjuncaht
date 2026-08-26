@@ -42,7 +42,7 @@ if "sqlite" in DATABASE_URL:
     if db_path and "/" in db_path:
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+engine = create_async_engine(DATABASE_URL, echo=False, pool_size=10, max_overflow=20, pool_timeout=30, pool_recycle=1800)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 Base = declarative_base()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -395,7 +395,12 @@ app.add_middleware(
 # ========== 健康检查 ==========
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    try:
+        async with async_session() as session:
+            await session.execute(select(1))
+        return {"status": "ok", "db": "connected"}
+    except Exception as e:
+        return {"status": "error", "db": str(e)}
 
 # ========== 认证 ==========
 @app.post("/api/v1/auth/register")
