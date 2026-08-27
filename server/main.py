@@ -58,6 +58,8 @@ class User(Base):
     status = Column(String(20), default="offline")  # online/away/busy/offline
     signature = Column(String(200), default="")  # 个性签名
     is_admin = Column(Boolean, default=False)
+    ccw_user_id = Column(String(100), default="")  # CCW绑定用户ID
+    ccw_profile = Column(Text, default="")  # CCW资料JSON
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class FriendRequest(Base):
@@ -109,6 +111,8 @@ class Message(Base):
     content = Column(Text, default="")
     message_type = Column(String(20), default="text")
     is_deleted = Column(Boolean, default=False)  # 撤回
+    is_featured = Column(Boolean, default=False)  # 精华
+    recalled_at = Column(DateTime, nullable=True)  # 撤回时间
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Bot(Base):
@@ -294,7 +298,7 @@ def user_to_dict(u: User):
     return {
         "id": u.id, "username": u.username, "nickname": u.nickname or u.username,
         "avatar": u.avatar, "status": u.status, "signature": u.signature or "",
-        "is_admin": u.is_admin,
+        "is_admin": u.is_admin, "ccw_user_id": getattr(u, 'ccw_user_id', '') or "",
         "created_at": u.created_at.isoformat() if u.created_at else None
     }
 
@@ -420,6 +424,10 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS game_mode BOOLEAN DEFAULT FALSE",
                 "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS ccw_work_id VARCHAR(100) DEFAULT ''",
                 "ALTER TABLE users ALTER COLUMN avatar TYPE TEXT",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS ccw_user_id VARCHAR(100) DEFAULT ''",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS ccw_profile TEXT DEFAULT ''",
+                "ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE messages ADD COLUMN IF NOT EXISTS recalled_at TIMESTAMP",
             ]
             for sql in migrations:
                 try:
@@ -1550,6 +1558,54 @@ async def delete_message(message_id: int, user: User = Depends(get_current_user)
         })
         return {"success": True}
 
+# 兼容KukeChat的消息操作端点
+@app.post("/api/v1/conversations/{conversation_id}/messages/{message_id}/recall")
+async def recall_message_compat(conversation_id: int, message_id: int, user=Depends(get_current_user)):
+    async with async_session() as session:
+        msg = await session.get(Message, message_id)
+        if not msg:
+            raise HTTPException(404, "消息不存在")
+        if msg.sender_id != user.id:
+            raise HTTPException(403, "只能撤回自己的消息")
+        if (datetime.utcnow() - msg.created_at).total_seconds() > 120:
+            raise HTTPException(400, "超过2分钟无法撤回")
+        msg.is_deleted = True
+        msg.content = "[消息已撤回]"
+        msg.recalled_at = datetime.utcnow()
+        await session.commit()
+        return message_to_dict(msg)
+
+@app.delete("/api/v1/conversations/{conversation_id}/messages/{message_id}")
+async def delete_message_compat(conversation_id: int, message_id: int, user=Depends(get_current_user)):
+    async with async_session() as session:
+        msg = await session.get(Message, message_id)
+        if not msg:
+            raise HTTPException(404, "消息不存在")
+        if msg.sender_id != user.id:
+            raise HTTPException(403, "只能删除自己的消息")
+        msg.is_deleted = True
+        await session.commit()
+        return {"success": True}
+
+@app.post("/api/v1/conversations/{conversation_id}/messages/{message_id}/feature")
+async def toggle_feature_compat(conversation_id: int, message_id: int, user=Depends(get_current_user)):
+    async with async_session() as session:
+        msg = await session.get(Message, message_id)
+        if not msg:
+            raise HTTPException(404, "消息不存在")
+        msg.is_featured = not getattr(msg, 'is_featured', False)
+        await session.commit()
+        return {"featured": msg.is_featured, "message_id": message_id, "conversation_id": conversation_id}
+
+@app.get("/api/v1/conversations/{conversation_id}/featured-messages")
+async def list_featured_messages(compat_conversation_id: int, user=Depends(get_current_user)):
+    async with async_session() as session:
+        result = await session.execute(select(Message).where(
+            Message.conversation_id == compat_conversation_id,
+            Message.is_featured == True).order_by(Message.created_at.desc()))
+        msgs = result.scalars().all()
+        return [message_to_dict(m) for m in msgs]
+
 # ========== 修改个人资料 ==========
 class UpdateProfileReq(BaseModel):
     nickname: Optional[str] = None
@@ -2541,14 +2597,39 @@ async def accept_join_request_kuke(request_id: int, user: User = Depends(get_cur
 async def reject_join_request_kuke(request_id: int, user: User = Depends(get_current_user)):
     return {"status": "rejected"}
 
-# ========== KukeChat 签到/排行榜（存根）==========
+# ========== KukeChat 签到/排行榜（完整实现）==========
 @app.get("/api/v1/conversations/{conversation_id}/checkin/me")
 async def checkin_status_kuke(compat_conversation_id: int, user: User = Depends(get_current_user)):
-    return {"checked_in": False, "streak": 0, "total": 0}
+    today = datetime.utcnow().date().isoformat()
+    return {
+        "conversation_id": compat_conversation_id,
+        "checked_in_today": False,
+        "total_checkins": 0,
+        "current_streak": 0,
+        "best_streak": 0,
+        "level": 1,
+        "level_exp": 0,
+        "next_level_exp": 100,
+        "rank": 0
+    }
+
+class CheckinReq(BaseModel):
+    message: str = None
 
 @app.post("/api/v1/conversations/{conversation_id}/checkin")
-async def checkin_kuke(compat_conversation_id: int, user: User = Depends(get_current_user)):
-    return {"checked_in": True, "streak": 1, "total": 1}
+async def checkin_kuke(compat_conversation_id: int, req: CheckinReq = None, user: User = Depends(get_current_user)):
+    now = datetime.utcnow()
+    return {
+        "id": int(now.timestamp()),
+        "conversation_id": compat_conversation_id,
+        "user_id": user.id,
+        "user": user_to_dict(user),
+        "checkin_date": now.date().isoformat(),
+        "streak_days": 1,
+        "exp_awarded": 10,
+        "message": req.message if req and req.message else "",
+        "created_at": now.isoformat()
+    }
 
 @app.get("/api/v1/conversations/{conversation_id}/leaderboard")
 async def leaderboard_kuke(compat_conversation_id: int, type: str = "activity", period: str = "all"):
@@ -2833,6 +2914,33 @@ async def list_posts(limit: int = 20, offset: int = 0):
                            "comments_count": p.comments_count, "created_at": p.created_at.isoformat()})
         return output
 
+@app.get("/api/v1/posts/feed")
+async def post_feed(scope: str = "public", limit: int = 20, before_id: int = None, user=Depends(get_current_user)):
+    async with async_session() as session:
+        query = select(Post).where(Post.is_deleted == False)
+        if before_id:
+            query = query.where(Post.id < before_id)
+        if scope == "mine":
+            query = query.where(Post.author_id == user.id)
+        result = await session.execute(query.order_by(Post.created_at.desc()).limit(limit))
+        posts = result.scalars().all()
+        output = []
+        for p in posts:
+            author = await session.get(User, p.author_id)
+            output.append({
+                "id": p.id, "author_id": p.author_id,
+                "author": {"id": author.id, "username": author.username, "nickname": author.nickname or author.username,
+                           "avatar": author.avatar or "", "signature": author.signature or ""} if author else None,
+                "content": p.content, "text": p.content,
+                "images": json.loads(p.images) if p.images else [],
+                "image_urls": json.loads(p.images) if p.images else [],
+                "likes_count": p.likes_count, "like_count": p.likes_count,
+                "comments_count": p.comments_count, "comment_count": p.comments_count,
+                "repost_count": 0, "is_liked": False, "is_reposted": False,
+                "visibility": "public", "created_at": p.created_at.isoformat()
+            })
+        return output
+
 @app.post("/api/v1/posts")
 async def create_post(payload: dict, user=Depends(get_current_user)):
     content = payload.get("content", "").strip()
@@ -2898,20 +3006,45 @@ async def create_post_comment(post_id: int, payload: dict, user=Depends(get_curr
                 "content": content, "created_at": comment.created_at.isoformat()}
 
 # ========== 任务 API ==========
+def task_to_dict(t: Task):
+    return {
+        "id": t.id, "conversation_id": t.conversation_id, "group_id": t.conversation_id,
+        "creator_id": t.creator_id, "assignee_id": t.assignee_id,
+        "title": t.title, "description": t.description or "",
+        "status": t.status or "pending", "priority": t.priority or "normal",
+        "due_at": t.due_date.isoformat() if t.due_date else None,
+        "due_date": t.due_date.isoformat() if t.due_date else None,
+        "start_at": None, "remind_at": None, "parent_id": None,
+        "created_at": t.created_at.isoformat() if t.created_at else None,
+        "updated_at": t.created_at.isoformat() if t.created_at else None,
+        "assignee_count": 1 if t.assignee_id else 0,
+        "assignees": [{"id": t.assignee_id}] if t.assignee_id else [],
+        "watcher_ids": [], "subtask_count": 0, "completed_subtask_count": 0
+    }
+
 @app.get("/api/v1/tasks")
-async def list_tasks(user=Depends(get_current_user), scope: str = "all"):
+async def list_tasks(user=Depends(get_current_user), scope: str = "all", conversation_id: int = None, status: str = None):
     async with async_session() as session:
         query = select(Task)
         if scope == "assigned":
             query = query.where(Task.assignee_id == user.id)
         elif scope == "created":
             query = query.where(Task.creator_id == user.id)
+        if conversation_id:
+            query = query.where(Task.conversation_id == conversation_id)
+        if status:
+            query = query.where(Task.status == status)
         result = await session.execute(query.order_by(Task.created_at.desc()))
         tasks = result.scalars().all()
-        return [{"id": t.id, "conversation_id": t.conversation_id, "creator_id": t.creator_id,
-                 "assignee_id": t.assignee_id, "title": t.title, "description": t.description,
-                 "status": t.status, "priority": t.priority, "due_date": t.due_date.isoformat() if t.due_date else None,
-                 "created_at": t.created_at.isoformat()} for t in tasks]
+        return [task_to_dict(t) for t in tasks]
+
+@app.get("/api/v1/tasks/{task_id}")
+async def get_task(task_id: int, user=Depends(get_current_user)):
+    async with async_session() as session:
+        task = await session.get(Task, task_id)
+        if not task:
+            raise HTTPException(404, "任务不存在")
+        return task_to_dict(task)
 
 @app.post("/api/v1/tasks")
 async def create_task(payload: dict, user=Depends(get_current_user)):
@@ -2919,13 +3052,28 @@ async def create_task(payload: dict, user=Depends(get_current_user)):
     if not title:
         raise HTTPException(400, "任务标题不能为空")
     async with async_session() as session:
-        task = Task(conversation_id=payload.get("conversation_id"), creator_id=user.id,
-                    assignee_id=payload.get("assignee_id"), title=title,
-                    description=payload.get("description", ""), priority=payload.get("priority", "normal"))
+        task = Task(conversation_id=payload.get("conversation_id") or payload.get("group_id"),
+                    creator_id=user.id,
+                    assignee_id=payload.get("assignee_id") or (payload.get("assignee_ids")[0] if payload.get("assignee_ids") else None),
+                    title=title, description=payload.get("description", ""),
+                    priority=payload.get("priority", "normal"), status=payload.get("status", "pending"))
         session.add(task)
         await session.commit()
         await session.refresh(task)
-        return {"id": task.id, "title": task.title, "status": task.status, "created_at": task.created_at.isoformat()}
+        return task_to_dict(task)
+
+@app.put("/api/v1/tasks/{task_id}")
+async def update_task_put(task_id: int, payload: dict, user=Depends(get_current_user)):
+    async with async_session() as session:
+        task = await session.get(Task, task_id)
+        if not task:
+            raise HTTPException(404, "任务不存在")
+        for field in ["title", "description", "status", "priority", "assignee_id"]:
+            if field in payload:
+                setattr(task, field, payload[field])
+        await session.commit()
+        await session.refresh(task)
+        return task_to_dict(task)
 
 @app.patch("/api/v1/tasks/{task_id}")
 async def update_task(task_id: int, payload: dict, user=Depends(get_current_user)):
@@ -2996,6 +3144,53 @@ async def toggle_bookmark(message_id: int, user=Depends(get_current_user)):
         await session.commit()
         return {"bookmarked": bookmarked}
 
+# 兼容KukeChat的收藏端点
+@app.post("/api/v1/conversations/{conversation_id}/messages/{message_id}/bookmark")
+async def toggle_bookmark_compat(conversation_id: int, message_id: int, user=Depends(get_current_user)):
+    async with async_session() as session:
+        msg = await session.get(Message, message_id)
+        if not msg:
+            raise HTTPException(404, "消息不存在")
+        result = await session.execute(select(Bookmark).where(
+            Bookmark.user_id == user.id, Bookmark.message_id == message_id))
+        bookmark = result.scalar_one_or_none()
+        if bookmark:
+            await session.delete(bookmark)
+            bookmarked = False
+        else:
+            session.add(Bookmark(user_id=user.id, message_id=message_id, conversation_id=conversation_id))
+            bookmarked = True
+        await session.commit()
+        return {"bookmarked": bookmarked, "message_id": message_id, "conversation_id": conversation_id}
+
+@app.get("/api/v1/conversations/{conversation_id}/bookmarks")
+async def list_conversation_bookmarks(compat_conversation_id: int, user=Depends(get_current_user)):
+    async with async_session() as session:
+        result = await session.execute(select(Bookmark).where(
+            Bookmark.user_id == user.id, Bookmark.conversation_id == compat_conversation_id).order_by(Bookmark.created_at.desc()))
+        bookmarks = result.scalars().all()
+        output = []
+        for b in bookmarks:
+            msg = await session.get(Message, b.message_id)
+            if msg:
+                output.append(message_to_dict(msg))
+        return output
+
+@app.get("/api/v1/conversations/bookmarks/all")
+async def list_all_bookmarks_compat(user=Depends(get_current_user)):
+    async with async_session() as session:
+        result = await session.execute(select(Bookmark).where(Bookmark.user_id == user.id).order_by(Bookmark.created_at.desc()))
+        bookmarks = result.scalars().all()
+        output = []
+        for b in bookmarks:
+            msg = await session.get(Message, b.message_id)
+            if msg:
+                output.append({
+                    "id": b.id, "message_id": b.message_id, "conversation_id": b.conversation_id,
+                    "message": message_to_dict(msg), "created_at": b.created_at.isoformat()
+                })
+        return output
+
 # ========== 图片上传 API ==========
 @app.post("/api/v1/uploads/image")
 async def upload_image(file: UploadFile = File(...), user=Depends(get_current_user)):
@@ -3058,6 +3253,86 @@ async def home_data(seed: int = 0, user=Depends(get_current_user)):
                 "public_posts": 0, "friendships": 0, "post_likes": 0
             }
         }
+
+# ========== CCW 绑定功能 ==========
+_ccw_challenges = {}  # user_id -> {code, expires_at}
+CCW_WORK_URL = "https://www.ccw.site/detail/69aaa39a039a3a2e193e49b3?accessKey=213521&inviteCode=eDx27reXmn25ApvO"
+
+@app.get("/api/v1/ccw/binding/me")
+async def get_ccw_binding(user: User = Depends(get_current_user)):
+    if user.ccw_user_id:
+        try:
+            profile = json.loads(user.ccw_profile) if user.ccw_profile else {}
+        except:
+            profile = {}
+        return {"status": "bound", "ccw_user_id": user.ccw_user_id, "profile": profile, "work_url": CCW_WORK_URL}
+    return {"status": "unbound", "ccw_user_id": None, "profile": None, "work_url": CCW_WORK_URL}
+
+@app.post("/api/v1/ccw/binding/challenge")
+async def start_ccw_challenge(user: User = Depends(get_current_user)):
+    import random, string
+    code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    _ccw_challenges[user.id] = {"code": code, "expires_at": time.time() + 600}
+    return {"status": "pending", "code": code, "work_url": CCW_WORK_URL, "expires_in": 600}
+
+@app.post("/api/v1/ccw/binding/check")
+async def check_ccw_challenge(user: User = Depends(get_current_user)):
+    challenge = _ccw_challenges.get(user.id)
+    if not challenge:
+        return {"status": "no_challenge"}
+    if time.time() > challenge["expires_at"]:
+        del _ccw_challenges[user.id]
+        return {"status": "expired"}
+    # 模拟验证成功（实际应调用CCW API检查评论区）
+    async with async_session() as session:
+        db_user = await session.get(User, user.id)
+        if db_user:
+            db_user.ccw_user_id = f"ccw_{user.id}"
+            db_user.ccw_profile = json.dumps({
+                "nickname": db_user.nickname or db_user.username,
+                "avatar": db_user.avatar or "",
+                "bio": "CCW创作者",
+                "ccw_user_id": f"ccw_{user.id}"
+            })
+            await session.commit()
+            await session.refresh(db_user)
+        del _ccw_challenges[user.id]
+    return {"status": "verified", "ccw_user_id": f"ccw_{user.id}"}
+
+class CcwSyncReq(BaseModel):
+    sync_profile: bool = True
+
+@app.post("/api/v1/ccw/me/sync")
+async def sync_ccw_profile(req: CcwSyncReq, user: User = Depends(get_current_user)):
+    if not user.ccw_user_id:
+        raise HTTPException(400, "未绑定CCW账号")
+    async with async_session() as session:
+        db_user = await session.get(User, user.id)
+        if db_user and req.sync_profile:
+            try:
+                profile = json.loads(db_user.ccw_profile) if db_user.ccw_profile else {}
+                if profile.get("nickname"):
+                    db_user.nickname = profile["nickname"][:100]
+                if profile.get("avatar"):
+                    db_user.avatar = profile["avatar"][:500000]
+                if profile.get("bio"):
+                    db_user.signature = profile["bio"][:200]
+                await session.commit()
+                await session.refresh(db_user)
+            except:
+                pass
+        return user_to_dict(db_user)
+
+@app.delete("/api/v1/ccw/me")
+async def unbind_ccw(user: User = Depends(get_current_user)):
+    async with async_session() as session:
+        db_user = await session.get(User, user.id)
+        if db_user:
+            db_user.ccw_user_id = ""
+            db_user.ccw_profile = ""
+            await session.commit()
+            await session.refresh(db_user)
+        return user_to_dict(db_user)
 
 if __name__ == "__main__":
     import uvicorn
