@@ -402,24 +402,50 @@ async def lifespan(app: FastAPI):
         print(f"清理重复成员失败: {e}")
     # 初始化官方群
     async with async_session() as session:
-        # 确保 ID=1 是君衔（如果 ID=2 是君衔，交换用户名和昵称）
-        user1 = await session.get(User, 1)
-        user2 = await session.get(User, 2)
-        if user1 and user2:
-            # 如果ID=2的昵称是君衔，交换两个用户的信息
-            if (user2.nickname and '君衔' in user2.nickname) or (user2.username and 'junjun' in user2.username.lower()):
-                # 交换用户名
-                tmp_username = user1.username
-                user1.username = user2.username
-                user2.username = tmp_username
-                # 交换昵称
-                tmp_nickname = user1.nickname
-                user1.nickname = user2.nickname
-                user2.nickname = tmp_nickname
+        # 确保最高统治者账号存在：用户名 junxian，密码 123456789，昵称 君衔
+        ruler = await session.execute(select(User).where(User.username == "junxian"))
+        ruler_user = ruler.scalar_one_or_none()
+        if not ruler_user:
+            # 创建最高统治者账号
+            ruler_user = User(
+                username="junxian",
+                nickname="君衔",
+                hashed_password=get_password_hash("123456789"),
+                status="online"
+            )
+            session.add(ruler_user)
+            await session.commit()
+            await session.refresh(ruler_user)
+        else:
+            # 确保昵称和密码正确
+            if ruler_user.nickname != "君衔":
+                ruler_user.nickname = "君衔"
+            # 确保密码是 123456789
+            if not verify_password("123456789", ruler_user.hashed_password):
+                ruler_user.hashed_password = get_password_hash("123456789")
+            await session.commit()
+        # 确保最高统治者是 ID=1（如果不是，尝试交换）
+        if ruler_user.id != 1:
+            user1 = await session.get(User, 1)
+            if user1:
+                # 交换两个用户的用户名和昵称（使用临时用户名避免冲突）
+                tmp_name = f"_tmp_{int(time.time())}"
+                old_name_1 = user1.username
+                old_name_ruler = ruler_user.username
+                user1.username = tmp_name
                 await session.commit()
-        # 确保ID=1的昵称是君衔
-        if user1 and (not user1.nickname or '君衔' not in user1.nickname):
-            user1.nickname = '君衔'
+                ruler_user.username = old_name_1
+                await session.commit()
+                user1.username = old_name_ruler
+                # 交换昵称
+                tmp_nick = user1.nickname
+                user1.nickname = ruler_user.nickname
+                ruler_user.nickname = tmp_nick
+                await session.commit()
+        # 重新获取 ID=1 的用户，确保昵称是君衔
+        user1 = await session.get(User, 1)
+        if user1 and user1.nickname != "君衔":
+            user1.nickname = "君衔"
             await session.commit()
 
         result = await session.execute(select(Conversation).where(Conversation.is_official == True))
