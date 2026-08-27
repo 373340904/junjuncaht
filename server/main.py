@@ -54,7 +54,7 @@ class User(Base):
     username = Column(String(50), unique=True, index=True, nullable=False)
     nickname = Column(String(100), default="")
     hashed_password = Column(String(200), nullable=False)
-    avatar = Column(String(10), default="")
+    avatar = Column(Text, default="")  # base64头像或URL
     status = Column(String(20), default="offline")  # online/away/busy/offline
     signature = Column(String(200), default="")  # 个性签名
     is_admin = Column(Boolean, default=False)
@@ -82,7 +82,14 @@ class Conversation(Base):
     title = Column(String(200), default="")
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     announcement = Column(Text, default="")  # 群公告
+    description = Column(Text, default="")  # 群描述
     is_official = Column(Boolean, default=False)  # 官方群
+    join_mode = Column(String(20), default="approval")  # open/approval/invite
+    join_question = Column(String(200), default="")  # 加群问题
+    mute_all = Column(Boolean, default=False)  # 全员禁言
+    task_enabled = Column(Boolean, default=False)  # 任务功能
+    game_mode = Column(Boolean, default=False)  # 游戏模式
+    ccw_work_id = Column(String(100), default="")  # 绑定作品ID
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class ConversationMember(Base):
@@ -400,6 +407,28 @@ async def lifespan(app: FastAPI):
                 pass
     except Exception as e:
         print(f"清理重复成员失败: {e}")
+    # 数据库迁移：添加 conversations 表新字段
+    try:
+        from sqlalchemy import text
+        async with async_session() as session:
+            migrations = [
+                "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS description TEXT DEFAULT ''",
+                "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS join_mode VARCHAR(20) DEFAULT 'approval'",
+                "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS join_question VARCHAR(200) DEFAULT ''",
+                "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS mute_all BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS task_enabled BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS game_mode BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS ccw_work_id VARCHAR(100) DEFAULT ''",
+                "ALTER TABLE users ALTER COLUMN avatar TYPE TEXT",
+            ]
+            for sql in migrations:
+                try:
+                    await session.execute(text(sql))
+                except Exception:
+                    pass
+            await session.commit()
+    except Exception as e:
+        print(f"数据库迁移失败: {e}")
     # 初始化官方群
     async with async_session() as session:
         # 确保最高统治者账号存在：用户名 junxian，密码 123456789，昵称 君衔
@@ -1176,6 +1205,13 @@ async def get_conversation(conversation_id: int, user: User = Depends(get_curren
 class GroupUpdateReq(BaseModel):
     title: str = None
     announcement: str = None
+    join_mode: str = None  # open/approval/invite
+    join_question: str = None
+    mute_all: bool = None
+    task_enabled: bool = None
+    game_mode: bool = None
+    ccw_work_id: str = None
+    description: str = None
 
 @app.put("/api/v1/conversations/{conversation_id}")
 async def update_group(conversation_id: int, req: GroupUpdateReq, user: User = Depends(get_current_user)):
@@ -1192,8 +1228,22 @@ async def update_group(conversation_id: int, req: GroupUpdateReq, user: User = D
             conv.title = req.title[:100]
         if req.announcement is not None:
             conv.announcement = req.announcement[:500]
+        if req.description is not None:
+            conv.description = req.description[:500]
+        if req.join_mode is not None and member.role == "owner":
+            conv.join_mode = req.join_mode
+        if req.join_question is not None and member.role == "owner":
+            conv.join_question = req.join_question[:200]
+        if req.mute_all is not None:
+            conv.mute_all = req.mute_all
+        if req.task_enabled is not None and member.role == "owner":
+            conv.task_enabled = req.task_enabled
+        if req.game_mode is not None and member.role == "owner":
+            conv.game_mode = req.game_mode
+        if req.ccw_work_id is not None and member.role == "owner":
+            conv.ccw_work_id = req.ccw_work_id[:100]
         await session.commit()
-        return {"status": "ok"}
+        return {"status": "ok", "conversation": conversation_to_dict(conv)}
 
 class RoleReq(BaseModel):
     user_id: int
@@ -2110,7 +2160,14 @@ async def conversation_to_dict(conv, session, current_user_id=None):
     return {
         "id": conv.id, "type": conv.type, "title": title,
         "owner_id": conv.owner_id, "announcement": conv.announcement or "",
+        "description": getattr(conv, 'description', '') or "",
         "is_official": conv.is_official, "member_count": member_count,
+        "join_mode": getattr(conv, 'join_mode', 'approval') or "approval",
+        "join_question": getattr(conv, 'join_question', '') or "",
+        "mute_all": getattr(conv, 'mute_all', False) or False,
+        "task_enabled": getattr(conv, 'task_enabled', False) or False,
+        "game_mode": getattr(conv, 'game_mode', False) or False,
+        "ccw_work_id": getattr(conv, 'ccw_work_id', '') or "",
         "created_at": conv.created_at.isoformat() if conv.created_at else None
     }
 
@@ -2345,10 +2402,30 @@ async def recommended_groups_kuke(user: User = Depends(get_current_user)):
 async def clear_history_kuke(compat_conversation_id: int, user: User = Depends(get_current_user)):
     return {"success": True}
 
-# 上传头像（返回假URL）
+# 上传头像（base64存储）
 @app.post("/api/v1/uploads/avatar")
-async def upload_avatar_kuke(user: User = Depends(get_current_user)):
-    return {"url": ""}
+async def upload_avatar_kuke(request: Request, user: User = Depends(get_current_user)):
+    try:
+        body = await request.json()
+        avatar_data = body.get("avatar") or body.get("image") or body.get("data") or ""
+        if not avatar_data:
+            # 尝试从form-data获取
+            form = await request.form()
+            file = form.get("file") or form.get("avatar")
+            if file:
+                contents = await file.read()
+                import base64
+                avatar_data = "data:image/png;base64," + base64.b64encode(contents).decode()
+        if avatar_data:
+            async with async_session() as session:
+                db_user = await session.get(User, user.id)
+                if db_user:
+                    db_user.avatar = avatar_data[:500000]  # 限制500KB
+                    await session.commit()
+                    return {"url": db_user.avatar, "avatar": db_user.avatar}
+        return {"url": "", "avatar": ""}
+    except Exception as e:
+        return {"url": "", "avatar": "", "error": str(e)}
 
 # ========== KukeChat 认证兼容 ==========
 @app.get("/api/v1/auth/session")
@@ -2951,14 +3028,36 @@ async def home_data(seed: int = 0, user=Depends(get_current_user)):
         total_users = await session.execute(select(func.count(User.id)))
         total_msgs = await session.execute(select(func.count(Message.id)))
         total_bots = await session.execute(select(func.count(Bot.id)).where(Bot.is_public == True))
+        total_groups = await session.execute(select(func.count(Conversation.id)).where(Conversation.type == "group"))
         hot_groups = await session.execute(select(Conversation).where(Conversation.type == "group").order_by(Conversation.id.desc()).limit(6))
         groups = []
         for g in hot_groups.scalars().all():
             mc = await session.execute(select(func.count(ConversationMember.id)).where(ConversationMember.conversation_id == g.id))
-            groups.append({"id": g.id, "title": g.title, "member_count": mc.scalar() or 0, "joined": False})
-        return {"seed": seed, "online_count": online.scalar() or 0, "total_users": total_users.scalar() or 0,
-                "total_messages": total_msgs.scalar() or 0, "total_bots": total_bots.scalar() or 0,
-                "hot_groups": groups, "recommended_bots": [], "activities": []}
+            groups.append({
+                "id": g.id, "title": g.title, "display_title": g.title,
+                "member_count": mc.scalar() or 0, "joined": False,
+                "join_mode": getattr(g, 'join_mode', 'approval') or "approval",
+                "join_question": getattr(g, 'join_question', '') or "",
+                "auto_approve": False, "is_official": g.is_official or False,
+                "description": getattr(g, 'description', '') or ""
+            })
+        return {
+            "seed": seed, "recommendation_seed": seed,
+            "online_count": online.scalar() or 0, "registered_users": total_users.scalar() or 0,
+            "messages": total_msgs.scalar() or 0, "messages_last_7_days": total_msgs.scalar() or 0,
+            "groups": total_groups.scalar() or 0, "public_groups": total_groups.scalar() or 0,
+            "public_posts": 0, "friendships": 0, "post_likes": 0,
+            "total_bots": total_bots.scalar() or 0,
+            "hot_groups": groups, "recommended_bots": [], "activities": [],
+            "stats": {
+                "registered_users": total_users.scalar() or 0,
+                "messages": total_msgs.scalar() or 0,
+                "messages_last_7_days": total_msgs.scalar() or 0,
+                "groups": total_groups.scalar() or 0,
+                "public_groups": total_groups.scalar() or 0,
+                "public_posts": 0, "friendships": 0, "post_likes": 0
+            }
+        }
 
 if __name__ == "__main__":
     import uvicorn
