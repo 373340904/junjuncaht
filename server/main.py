@@ -418,35 +418,15 @@ async def lifespan(app: FastAPI):
             await session.refresh(ruler_user)
         else:
             # 确保昵称和密码正确
+            changed = False
             if ruler_user.nickname != "君衔":
                 ruler_user.nickname = "君衔"
-            # 确保密码是 123456789
+                changed = True
             if not verify_password("123456789", ruler_user.hashed_password):
                 ruler_user.hashed_password = get_password_hash("123456789")
-            await session.commit()
-        # 确保最高统治者是 ID=1（如果不是，尝试交换）
-        if ruler_user.id != 1:
-            user1 = await session.get(User, 1)
-            if user1:
-                # 交换两个用户的用户名和昵称（使用临时用户名避免冲突）
-                tmp_name = f"_tmp_{int(time.time())}"
-                old_name_1 = user1.username
-                old_name_ruler = ruler_user.username
-                user1.username = tmp_name
+                changed = True
+            if changed:
                 await session.commit()
-                ruler_user.username = old_name_1
-                await session.commit()
-                user1.username = old_name_ruler
-                # 交换昵称
-                tmp_nick = user1.nickname
-                user1.nickname = ruler_user.nickname
-                ruler_user.nickname = tmp_nick
-                await session.commit()
-        # 重新获取 ID=1 的用户，确保昵称是君衔
-        user1 = await session.get(User, 1)
-        if user1 and user1.nickname != "君衔":
-            user1.nickname = "君衔"
-            await session.commit()
 
         result = await session.execute(select(Conversation).where(Conversation.is_official == True))
         official = result.scalar_one_or_none()
